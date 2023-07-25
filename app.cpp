@@ -62,8 +62,8 @@ int main()
   auto output = model.forward(batch_dict);
 
   //// VFE - Done (untested)
-  //// Map to BEV
-  //// Backbone 2d
+  //// Map to BEV - Done (untested)
+  //// Backbone 2d - Done (untested)
   //// Dense Head
 
 

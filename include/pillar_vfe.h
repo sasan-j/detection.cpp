@@ -79,7 +79,7 @@ private:
 class PillarVFEImpl : public torch::nn::Module
 {
 private:
-    std::vector<int64_t> num_filters;
+    std::vector<int32_t> num_filters;
     std::vector<std::shared_ptr<PFNLayer>> pfn_layers;
     bool use_norm;
     bool with_distance;
@@ -93,7 +93,7 @@ private:
 
 
 public:
-    PillarVFEImpl(std::vector<int64_t> num_filters,
+    PillarVFEImpl(std::vector<int32_t> num_filters,
               bool use_norm = true,
               bool with_distance = true,
               bool use_absolute_xyz = true,

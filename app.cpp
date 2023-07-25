@@ -4,6 +4,7 @@
 #include <tuple>
 #include <vector>
 #include "voxelization.h"
+#include "pointpillars.h"
 
 int main()
 {
@@ -44,6 +45,27 @@ int main()
   std::cout << "voxels" << voxels.index({torch::indexing::Slice(0, 5), torch::indexing::Slice(0, 5)}) << '\n';
   std::cout << "coors" << coors.index({torch::indexing::Slice(0, 5)}) << '\n';
   std::cout << "points_per_voxels" << num_points_per_voxel.index({torch::indexing::Slice(0, 5)}) << '\n';
+
+
+
+  // PointPillar
+  pointpillars::PointPillars model(voxel_size_vect, point_cloud_range_vect, max_points_voxel, max_num_voxels);
+
+  // Create a vector of inputs.
+  std::unordered_map<std::string, torch::Tensor> batch_dict;
+  batch_dict["voxels"] = voxels;
+  batch_dict["coors"] = coors;
+  batch_dict["num_points_per_voxel"] = num_points_per_voxel;
+
+  // Execute the model and turn its output into a tensor.
+  auto output = model.forward(batch_dict);
+
+  //// VFE
+  //// Map to BEV
+  //// Backbone 2d
+  //// Dense Head
+
+
 
   // torch::jit::script::Module voxelizer;
   // try {

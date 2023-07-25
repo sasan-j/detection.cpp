@@ -42,14 +42,15 @@ int main()
   num_points_per_voxel = num_points_per_voxel.index({torch::indexing::Slice(0, vox_out)});
 
 
-  std::cout << "voxels" << voxels.index({torch::indexing::Slice(0, 5), torch::indexing::Slice(0, 5)}) << '\n';
-  std::cout << "coors" << coors.index({torch::indexing::Slice(0, 5)}) << '\n';
-  std::cout << "points_per_voxels" << num_points_per_voxel.index({torch::indexing::Slice(0, 5)}) << '\n';
+  std::cout << "grid_size" << grid_size << '\n';
+  std::cout << "voxels" << voxels.index({torch::indexing::Slice(0, 3), torch::indexing::Slice(0, 3)}) << '\n';
+  std::cout << "coors" << coors.index({torch::indexing::Slice(0, 3)}) << '\n';
+  std::cout << "points_per_voxels" << num_points_per_voxel.index({torch::indexing::Slice(0, 3)}) << '\n';
 
 
 
   // PointPillar
-  pointpillars::PointPillars model(voxel_size_vect, point_cloud_range_vect, max_points_voxel, max_num_voxels);
+  pointpillars::PointPillars model(voxel_size_vect, point_cloud_range_vect, max_points_voxel, max_num_voxels, grid_size);
 
   // Create a vector of inputs.
   std::unordered_map<std::string, torch::Tensor> batch_dict;
@@ -60,7 +61,7 @@ int main()
   // Execute the model and turn its output into a tensor.
   auto output = model.forward(batch_dict);
 
-  //// VFE
+  //// VFE - Done (untested)
   //// Map to BEV
   //// Backbone 2d
   //// Dense Head

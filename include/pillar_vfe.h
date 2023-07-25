@@ -4,13 +4,6 @@
 class PFNLayer : public torch::nn::Module
 {
 
-private:
-    torch::nn::Linear linear{nullptr};
-    torch::nn::BatchNorm1d norm{nullptr};
-    bool use_norm;
-    bool last_vfe;
-    int64_t part;
-
 public:
     PFNLayer(int64_t in_channels,
              int64_t out_channels,
@@ -74,6 +67,12 @@ public:
         }
     }
 
+private:
+    torch::nn::Linear linear{nullptr};
+    torch::nn::BatchNorm1d norm{nullptr};
+    bool use_norm;
+    bool last_vfe;
+    int64_t part;
 
 };
 

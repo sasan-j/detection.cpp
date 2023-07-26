@@ -2,6 +2,8 @@
 
 #include <torch/torch.h>
 #include "utils.h"
+#include "iou3d_nms.h"
+
 
 
 // Defs
@@ -66,4 +68,37 @@ torch::Tensor boxes_iou_normal(torch::Tensor boxes_a, torch::Tensor boxes_b) {
 
 torch::Tensor limit_period(torch::Tensor val, float offset, float period) {
     return val - torch::floor(val / period + offset) * period;
+}
+
+torch::Tensor boxes_iou3d_gpu(torch::Tensor boxes_a, torch::Tensor boxes_b) {
+    // Ensure the shapes of boxes_a and boxes_b
+    assert(boxes_a.size(1) == 7 && boxes_b.size(1) == 7);
+
+    // Calculate height overlap
+    torch::Tensor boxes_a_height_max = (boxes_a.index({torch::indexing::Slice(), 2}) + boxes_a.index({torch::indexing::Slice(), 5}) / 2).view({-1, 1});
+    torch::Tensor boxes_a_height_min = (boxes_a.index({torch::indexing::Slice(), 2}) - boxes_a.index({torch::indexing::Slice(), 5}) / 2).view({-1, 1});
+    torch::Tensor boxes_b_height_max = (boxes_b.index({torch::indexing::Slice(), 2}) + boxes_b.index({torch::indexing::Slice(), 5}) / 2).view({1, -1});
+    torch::Tensor boxes_b_height_min = (boxes_b.index({torch::indexing::Slice(), 2}) - boxes_b.index({torch::indexing::Slice(), 5}) / 2).view({1, -1});
+
+    // Calculate BEV overlap
+    torch::Tensor overlaps_bev = torch::zeros({boxes_a.size(0), boxes_b.size(0)}, boxes_a.options().device(torch::kCUDA));
+    // Note: boxes_overlap_bev_gpu() should be a defined function in your C++/CUDA code
+    boxes_overlap_bev_gpu(boxes_a.contiguous(), boxes_b.contiguous(), overlaps_bev);
+
+    // Calculate height overlap
+    torch::Tensor max_of_min = torch::max(boxes_a_height_min, boxes_b_height_min);
+    torch::Tensor min_of_max = torch::min(boxes_a_height_max, boxes_b_height_max);
+    torch::Tensor overlaps_h = torch::clamp(min_of_max - max_of_min, 0);
+
+    // Calculate 3D overlap
+    torch::Tensor overlaps_3d = overlaps_bev * overlaps_h;
+
+    // Calculate volume of boxes_a and boxes_b
+    torch::Tensor vol_a = (boxes_a.index({torch::indexing::Slice(), 3}) * boxes_a.index({torch::indexing::Slice(), 4}) * boxes_a.index({torch::indexing::Slice(), 5})).view({-1, 1});
+    torch::Tensor vol_b = (boxes_b.index({torch::indexing::Slice(), 3}) * boxes_b.index({torch::indexing::Slice(), 4}) * boxes_b.index({torch::indexing::Slice(), 5})).view({1, -1});
+
+    // Calculate IoU
+    torch::Tensor iou3d = overlaps_3d / torch::clamp(vol_a + vol_b - overlaps_3d, 1e-6);
+
+    return iou3d;
 }

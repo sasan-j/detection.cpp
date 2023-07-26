@@ -39,6 +39,8 @@ namespace pointpillars
       bool USE_MULTIHEAD = false;
       int NUM_CLASS = 3;
       int NUM_DIR_BINS = 2;
+      float DIR_OFFSET = 0.78539;
+      float DIR_LIMIT_OFFSET = 0.0;
       std::vector<std::string> CLASS_NAMES = {"Car", "Pedestrian", "Cyclist"};
 
       // PillarVFE
@@ -46,7 +48,7 @@ namespace pointpillars
       pp_scatter = register_module("map_to_bev", PointPillarScatter(num_filters[0], grid_size[0].item<int64_t>(), grid_size[1].item<int64_t>(), grid_size[2].item<int64_t>()));
       // not so sure about the first parameter (num_channels)
       backbone2d = register_module("backbone2d", BaseBEVBackbone(num_filters[0], LAYER_NUMS, LAYER_STRIDES, NUM_FILTERS, UPSAMPLE_STRIDES, NUM_UPSAMPLE_FILTERS));
-      anchor_head = register_module("anchor_head", AnchorHeadSingle(NUM_DIR_BINS, USE_DIRECTION_CLASSIFIER, NUM_UPSAMPLE_FILTERS[2], NUM_CLASS, CLASS_NAMES, grid_size, point_cloud_range, true));
+      anchor_head = register_module("anchor_head", AnchorHeadSingle(NUM_DIR_BINS, USE_DIRECTION_CLASSIFIER, NUM_UPSAMPLE_FILTERS[2], NUM_CLASS, CLASS_NAMES, grid_size, point_cloud_range, DIR_OFFSET, DIR_LIMIT_OFFSET, true));
     }
 
     // Implement the Net's algorithm.

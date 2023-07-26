@@ -4,8 +4,7 @@
 #include <vector>
 #include <map>
 
-#include "iou3d_cpu.h"
-#include "iou3d_nms.h"
+// #include "iou3d_nms.h"
 #include "box_utils.h"
 
 
@@ -297,7 +296,7 @@ public:
         this->pos_fraction = (pos_fraction >= 0) ? pos_fraction : -1;
     }
 
-    std::map<std::string, torch::Tensor> assign_targets(std::vector<torch::Tensor> all_anchors, torch::Tensor gt_boxes_with_classes)
+    std::unordered_map<std::string, torch::Tensor> assign_targets(std::vector<torch::Tensor> all_anchors, torch::Tensor gt_boxes_with_classes)
     {
         std::vector<torch::Tensor> bbox_targets;
         std::vector<torch::Tensor> cls_labels;
@@ -385,7 +384,7 @@ public:
         auto cls_labels_t = torch::stack(cls_labels, 0);
         auto reg_weights_t = torch::stack(reg_weights, 0);
 
-        std::map<std::string, torch::Tensor> all_targets_dict = {
+        std::unordered_map<std::string, torch::Tensor> all_targets_dict = {
             {"box_cls_labels", cls_labels_t},
             {"box_reg_targets", bbox_targets_t},
             {"reg_weights", reg_weights_t}};

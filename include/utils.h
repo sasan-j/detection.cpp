@@ -1,13 +1,18 @@
+#pragma once
+
 #include <torch/torch.h>
 #include <vector>
 #include <map>
 
 #include "iou3d_cpu.h"
 #include "iou3d_nms.h"
+#include "box_utils.h"
+
 
 class ResidualCoder
 {
 public:
+    int code_size;
     ResidualCoder(int code_size = 7, bool encode_angle_by_sincos = false)
         : code_size(code_size), encode_angle_by_sincos(encode_angle_by_sincos)
     {
@@ -126,7 +131,6 @@ public:
     }
 
 private:
-    int code_size;
     bool encode_angle_by_sincos;
 };
 
@@ -193,7 +197,7 @@ public:
     {
         assert(grid_sizes.size() == num_of_anchor_sets);
         std::vector<torch::Tensor> all_anchors;
-        std::vector<int> num_anchors_per_location;
+        std::vector<int32_t> num_anchors_per_location;
 
         for (int i = 0; i < num_of_anchor_sets; i++)
         {
@@ -242,7 +246,8 @@ public:
             all_anchors.push_back(anchors);
         }
 
-        auto out = torch::from_blob(num_anchors_per_location.data(), {num_anchors_per_location.size()});
+        auto options = torch::TensorOptions().dtype(torch::kInt32); // or whatever data type num_anchors_per_location holds
+        auto out = torch::from_blob(num_anchors_per_location.data(), {num_anchors_per_location.size()}, options);
 
         return {all_anchors, out};
     }
@@ -259,6 +264,11 @@ public:
 class AxisAlignedTargetAssigner
 {
 public:
+
+    AxisAlignedTargetAssigner(){
+
+    }
+
     AxisAlignedTargetAssigner(
         std::vector<std::string> class_names, 
         ResidualCoder box_coder, 
@@ -295,7 +305,7 @@ public:
 
         int batch_size = gt_boxes_with_classes.size(0);
         auto gt_classes = gt_boxes_with_classes.index({torch::indexing::Slice(), torch::indexing::Slice(), -1});
-        auto gt_boxes = gt_boxes_with_classes.index({torch::indexing::Slice(), torch::indexing::Slice(), torch::indexing::Slice(None, -1)});
+        auto gt_boxes = gt_boxes_with_classes.index({torch::indexing::Slice(), torch::indexing::Slice(), torch::indexing::Slice({torch::indexing::None}, -1)});
 
         for (int k = 0; k < batch_size; ++k)
         {
@@ -307,23 +317,36 @@ public:
             }
             cur_gt = cur_gt.slice(0, 0, cnt + 1);
             auto cur_gt_classes = gt_classes[k].slice(0, 0, cnt + 1).to(torch::kInt);
+            torch::Tensor feature_map_size;
 
-            std::vector<Target> target_list;
+            std::vector<std::unordered_map<std::string, torch::Tensor>> target_list;
             for (int i = 0; i < anchor_class_names.size(); ++i)
             {
                 auto anchor_class_name = anchor_class_names[i];
                 auto anchors = all_anchors[i];
 
-                // The following is a placeholder for the mask creation
-                // The Python functionality does not have a direct C++ equivalent
                 torch::Tensor mask;
-                // ... create mask ...
 
-                auto feature_map_size = anchors.sizes().slice(0, 3);
-                anchors = anchors.view(-1, anchors.size(-1));
+                if (cur_gt_classes.size(0) > 1) {
+                    std::vector<torch::Tensor> mask_elems;
+                    for (int64_t i = 0; i < cur_gt_classes.size(0); ++i) {
+                        int64_t c = cur_gt_classes[i].item<int64_t>() - 1;
+                        mask_elems.push_back(torch::full({}, this->class_names[c] == anchor_class_name, torch::kBool));
+                    }
+                    mask = torch::stack(mask_elems);
+                } else {
+                    std::vector<torch::Tensor> mask_data;
+                    for(int64_t i=0; i < cur_gt_classes.size(0); ++i) {
+                        int64_t c = cur_gt_classes[i].item<int64_t>() - 1;
+                        mask_data.push_back(torch::full({}, this->class_names[c] == anchor_class_name, torch::kBool));
+                    }
+                    mask = torch::stack(mask_data);
+                }
+
+                feature_map_size = torch::tensor((anchors.sizes().slice(0, 3)).data(), torch::kLong);
+                anchors = anchors.reshape({-1, anchors.size(-1)});
                 auto selected_classes = cur_gt_classes.index({mask});
 
-                // The assign_targets_single function needs to be implemented
                 auto single_target = assign_targets_single(
                     anchors,
                     cur_gt.index({mask}),
@@ -331,34 +354,31 @@ public:
                     matched_thresholds[anchor_class_name],
                     unmatched_thresholds[anchor_class_name]);
                 target_list.push_back(single_target);
-
-                // ... continue translation ...
             }
 
-            // ... continue translation ...
-            std::vector<torch::Tensor> box_cls_labels;
-            std::vector<torch::Tensor> box_reg_targets;
-            std::vector<torch::Tensor> reg_weights;
+            std::vector<torch::Tensor> box_cls_labels, box_reg_targets, reg_weights;
 
-            for (const auto &t : target_list)
-            {
-                box_cls_labels.push_back(t.at("box_cls_labels").view(feature_map_size).view(-1));
-                box_reg_targets.push_back(t.at("box_reg_targets").view(feature_map_size).view(-1, this->box_coder.code_size));
-                reg_weights.push_back(t.at("reg_weights").view(feature_map_size).view(-1));
+            for(auto& t : target_list) {
+                box_cls_labels.push_back(t["box_cls_labels"].view({-1}));
+                box_reg_targets.push_back(t["box_reg_targets"].view({-1, this->box_coder.code_size}));
+                reg_weights.push_back(t["reg_weights"].view({-1}));
             }
 
-            std::map<std::string, std::vector<torch::Tensor>> target_dict = {
+            std::unordered_map<std::string, std::vector<torch::Tensor>> target_dict = {
                 {"box_cls_labels", box_cls_labels},
                 {"box_reg_targets", box_reg_targets},
-                {"reg_weights", reg_weights}};
+                {"reg_weights", reg_weights}
+            };
 
-            target_dict["box_reg_targets"] = torch::cat(target_dict["box_reg_targets"], -2).view(-1, this->box_coder.code_size);
-            target_dict["box_cls_labels"] = torch::cat(target_dict["box_cls_labels"], -1).view(-1);
-            target_dict["reg_weights"] = torch::cat(target_dict["reg_weights"], -1).view(-1);
+            std::unordered_map<std::string, torch::Tensor> target_dict_refined;
 
-            bbox_targets.push_back(target_dict["box_reg_targets"]);
-            cls_labels.push_back(target_dict["box_cls_labels"]);
-            reg_weights.push_back(target_dict["reg_weights"]);
+            target_dict_refined["box_reg_targets"] = torch::cat(target_dict["box_reg_targets"], -2).view({-1, this->box_coder.code_size});
+            target_dict_refined["box_cls_labels"] = torch::cat(target_dict["box_cls_labels"], -1).view({-1});
+            target_dict_refined["reg_weights"] = torch::cat(target_dict["reg_weights"], -1).view({-1});
+
+            bbox_targets.push_back(target_dict_refined["box_reg_targets"]);
+            cls_labels.push_back(target_dict_refined["box_cls_labels"]);
+            reg_weights.push_back(target_dict_refined["reg_weights"]);
         }
 
         auto bbox_targets_t = torch::stack(bbox_targets, 0);
@@ -373,7 +393,7 @@ public:
     }
 
 
-    std::map<std::string, torch::Tensor> assign_targets_single(
+    std::unordered_map<std::string, torch::Tensor> assign_targets_single(
         torch::Tensor anchors, torch::Tensor gt_boxes, torch::Tensor gt_classes,
         double matched_threshold, double unmatched_threshold
     ) {
@@ -420,28 +440,45 @@ public:
             bg_inds = torch::arange(num_anchors, anchors.options().device());
         }
 
+        auto fg_inds = torch::nonzero(labels > 0).select(1, 0);
 
-
-
-        // Actual implementation needed here
-        // This involves operations like IoU calculations, array manipulations, etc.
-        // which needs to be implemented using appropriate C++ libraries or custom functions.
-
-
-        if (this->norm_by_num_examples) {
-            auto num_examples = (labels >= 0).sum();
-            num_examples = num_examples.item<float>() > 1.0 ? num_examples : torch::tensor(1.0);
-            reg_weights.masked_fill_(labels > 0, 1.0 / num_examples.item<float>());
-        } else {
-            reg_weights.masked_fill_(labels > 0, 1.0);
+        int64_t num_fg = static_cast<int64_t>(this->pos_fraction * this->sample_size);
+        if (fg_inds.size(0) > num_fg) {
+            int64_t num_disabled = fg_inds.size(0) - num_fg;
+            auto disable_inds = torch::randperm(fg_inds.size(0)).slice(0, 0, num_disabled);
+            labels.index_put_({disable_inds}, -1);
+            fg_inds = torch::nonzero(labels > 0).select(1, 0);
         }
 
+        int64_t num_bg = this->sample_size - (labels > 0).sum().item<int64_t>();
+        if (bg_inds.size(0) > num_bg) {
+            auto enable_inds = bg_inds.index({torch::randint(0, bg_inds.size(0), {num_bg})});
+            labels.index_put_({enable_inds}, 0);
+        }
 
+        auto bbox_targets = torch::zeros({num_anchors, this->box_coder.code_size}, anchors.options());
+        if (gt_boxes.size(0) > 0 && anchors.size(0) > 0) {
+            auto fg_gt_boxes = gt_boxes.index({anchor_to_gt_argmax.index({fg_inds}), torch::indexing::Slice()});
+            auto fg_anchors = anchors.index({fg_inds, torch::indexing::Slice()});
+            bbox_targets.index_put_({fg_inds, torch::indexing::Slice()}, this->box_coder.encode_torch(fg_gt_boxes, fg_anchors));
+        }
 
-        std::map<std::string, torch::Tensor> ret_dict = {
+        auto reg_weights = torch::zeros({num_anchors}, anchors.options());
+
+        if (this->norm_by_num_examples) {
+            auto num_examples = (labels >= 0).sum().item<float>();
+            num_examples = num_examples > 1.0 ? num_examples : 1.0;
+            reg_weights.index_put_({labels > 0}, 1.0 / num_examples);
+        } else {
+            reg_weights.index_put_({labels > 0}, 1.0);
+        }
+
+        std::unordered_map<std::string, torch::Tensor> ret_dict = {
             {"box_cls_labels", labels},
             {"box_reg_targets", bbox_targets},
-            {"reg_weights", reg_weights}};
+            {"reg_weights", reg_weights},
+        };
+
         return ret_dict;
     }
 
@@ -458,65 +495,3 @@ private:
     std::map<std::string, float> unmatched_thresholds;
     bool use_multihead;
 };
-
-
-torch::Tensor boxes_iou_normal(torch::Tensor boxes_a, torch::Tensor boxes_b) {
-    // Ensure the shapes of boxes_a and boxes_b
-    assert(boxes_a.size(1) == 4 && boxes_b.size(1) == 4);
-
-    // Calculate overlap in x and y directions
-    torch::Tensor x_min = torch::max(boxes_a.index({torch::indexing::Slice(), 0}).unsqueeze(1), boxes_b.index({torch::indexing::Slice(), 0}).unsqueeze(0));
-    torch::Tensor x_max = torch::min(boxes_a.index({torch::indexing::Slice(), 2}).unsqueeze(1), boxes_b.index({torch::indexing::Slice(), 2}).unsqueeze(0));
-    torch::Tensor y_min = torch::max(boxes_a.index({torch::indexing::Slice(), 1}).unsqueeze(1), boxes_b.index({torch::indexing::Slice(), 1}).unsqueeze(0));
-    torch::Tensor y_max = torch::min(boxes_a.index({torch::indexing::Slice(), 3}).unsqueeze(1), boxes_b.index({torch::indexing::Slice(), 3}).unsqueeze(0));
-
-    // Calculate overlap area
-    torch::Tensor x_len = torch::clamp_min(x_max - x_min, 0);
-    torch::Tensor y_len = torch::clamp_min(y_max - y_min, 0);
-    torch::Tensor area_a = (boxes_a.index({torch::indexing::Slice(), 2}) - boxes_a.index({torch::indexing::Slice(), 0})) * (boxes_a.index({torch::indexing::Slice(), 3}) - boxes_a.index({torch::indexing::Slice(), 1}));
-    torch::Tensor area_b = (boxes_b.index({torch::indexing::Slice(), 2}) - boxes_b.index({torch::indexing::Slice(), 0})) * (boxes_b.index({torch::indexing::Slice(), 3}) - boxes_b.index({torch::indexing::Slice(), 1}));
-
-    // Calculate intersection and IoU
-    torch::Tensor a_intersect_b = x_len * y_len;
-    torch::Tensor iou = a_intersect_b / torch::clamp_min(area_a.unsqueeze(1) + area_b.unsqueeze(0) - a_intersect_b, 1e-6);
-
-    return iou;
-}
-
-
-torch::Tensor boxes3d_lidar_to_aligned_bev_boxes(torch::Tensor boxes3d) {
-    // Make sure boxes3d has at least 7 columns
-    assert(boxes3d.size(1) >= 7);
-
-    // Limit the period of the heading angle
-    torch::Tensor rot_angle = limit_period(boxes3d.index({torch::indexing::Slice(), 6}), 0.5, M_PI).abs();
-
-    // Choose dimensions based on rotation angle
-    torch::Tensor choose_dims = torch::where(rot_angle.unsqueeze(1) < M_PI / 4, 
-                                             boxes3d.index({torch::indexing::Slice(), torch::indexing::Slice(3, 5)}), 
-                                             boxes3d.index({torch::indexing::Slice(), torch::indexing::Slice(4, 6)}));
-
-    // Create aligned BEV boxes
-    torch::Tensor aligned_bev_boxes = torch::cat({boxes3d.index({torch::indexing::Slice(), torch::indexing::Slice(0, 2)}) - choose_dims / 2, 
-                                                  boxes3d.index({torch::indexing::Slice(), torch::indexing::Slice(0, 2)}) + choose_dims / 2}, 1);
-
-    return aligned_bev_boxes;
-}
-
-
-torch::Tensor boxes3d_nearest_bev_iou(torch::Tensor boxes_a, torch::Tensor boxes_b) {
-    // Ensure the input tensors have exactly 7 columns
-    assert(boxes_a.size(1) == 7 && boxes_b.size(1) == 7);
-    
-    // Convert 3D boxes to BEV boxes
-    torch::Tensor boxes_bev_a = boxes3d_lidar_to_aligned_bev_boxes(boxes_a);
-    torch::Tensor boxes_bev_b = boxes3d_lidar_to_aligned_bev_boxes(boxes_b);
-    
-    // Compute the IoU using the converted BEV boxes
-    return boxes_iou_normal(boxes_bev_a, boxes_bev_b);
-}
-
-
-torch::Tensor limit_period(torch::Tensor val, float offset=0.5, float period=3.14159) {
-    return val - torch::floor(val / period + offset) * period;
-}

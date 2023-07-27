@@ -1,5 +1,7 @@
 #include <torch/torch.h>
 
+#include "utils.h"
+
 // NAME: BaseBEVBackbone
 // LAYER_NUMS: [3, 5, 5]
 // LAYER_STRIDES: [2, 2, 2]
@@ -12,15 +14,18 @@ class BaseBEVBackboneImpl : public torch::nn::Module
 public:
     BaseBEVBackboneImpl(int input_channels, std::vector<int> layer_nums, std::vector<int> layer_strides, std::vector<int> num_filters,
                         std::vector<int> upsample_strides, std::vector<int> num_upsample_filters)
+            : layer_nums(layer_nums), layer_strides(layer_strides), num_filters(num_filters),
+              upsample_strides(upsample_strides), num_upsample_filters(num_upsample_filters)
     {
-        assert(layer_nums.size() == layer_strides.size() == num_filters.size());
+        std::cout << layer_nums.size() << layer_strides.size() << num_filters.size() << std::endl;
+        assert(layer_nums.size() == layer_strides.size() && layer_strides.size() == num_filters.size());
         assert(upsample_strides.size() == num_upsample_filters.size());
 
-        this->layer_nums = layer_nums;
-        this->layer_strides = layer_strides;
-        this->num_filters = num_filters;
-        this->upsample_strides = upsample_strides;
-        this->num_upsample_filters = num_upsample_filters;
+        // this->layer_nums = layer_nums;
+        // this->layer_strides = layer_strides;
+        // this->num_filters = num_filters;
+        // this->upsample_strides = upsample_strides;
+        // this->num_upsample_filters = num_upsample_filters;
 
         int num_levels = layer_nums.size();
         std::vector<int> c_in_list = {input_channels};
@@ -31,35 +36,38 @@ public:
             auto cur_layers = torch::nn::Sequential(
                 torch::nn::ZeroPad2d(1),
                 torch::nn::Conv2d(torch::nn::Conv2dOptions(c_in_list[idx], num_filters[idx], 3).stride(layer_strides[idx]).padding(0).bias(false)),
-                torch::nn::BatchNorm2d(num_filters[idx]),
+                torch::nn::BatchNorm2d(torch::nn::BatchNorm2dOptions(num_filters[idx]).eps(1e-3).momentum(0.01)),
                 torch::nn::ReLU());
             for (int k = 0; k < layer_nums[idx]; ++k)
             {
                 cur_layers->push_back(torch::nn::Conv2d(torch::nn::Conv2dOptions(num_filters[idx], num_filters[idx], 3).padding(1).bias(false)));
-                cur_layers->push_back(torch::nn::BatchNorm2d(num_filters[idx]));
+                cur_layers->push_back(torch::nn::BatchNorm2d(torch::nn::BatchNorm2dOptions(num_filters[idx]).eps(1e-3).momentum(0.01)));
                 cur_layers->push_back(torch::nn::ReLU());
             }
-            this->blocks.push_back(register_module("block_" + std::to_string(idx), cur_layers));
-
-            std::cout << "blocks: " << this->blocks << std::endl;
+            register_module("block_" + std::to_string(idx), cur_layers);
+            this->blocks.push_back(cur_layers);
 
             if (upsample_strides.size() > 0)
             {
                 int stride = upsample_strides[idx];
                 if (stride > 1 || (stride == 1 && this->USE_CONV_FOR_NO_STRIDE))
                 {
-                    this->deblocks.push_back(register_module("deblock_" + std::to_string(idx), torch::nn::Sequential(
-                                                                                                   torch::nn::ConvTranspose2d(torch::nn::ConvTranspose2dOptions(num_filters[idx], num_upsample_filters[idx], upsample_strides[idx]).stride(upsample_strides[idx]).bias(false)),
-                                                                                                   torch::nn::BatchNorm2d(num_upsample_filters[idx]),
-                                                                                                   torch::nn::ReLU())));
+                    auto deblock_layers = torch::nn::Sequential(
+                        torch::nn::ConvTranspose2d(torch::nn::ConvTranspose2dOptions(num_filters[idx], num_upsample_filters[idx], upsample_strides[idx]).stride(upsample_strides[idx]).bias(false)),
+                        torch::nn::BatchNorm2d(torch::nn::BatchNorm2dOptions(num_upsample_filters[idx]).eps(1e-3).momentum(0.01)),
+                        torch::nn::ReLU());
+                    register_module("deblock_" + std::to_string(idx), deblock_layers);
+                    this->deblocks.push_back(deblock_layers);
                 }
                 else
                 {
+                    auto deblock_layers = torch::nn::Sequential(
+                        torch::nn::Conv2d(torch::nn::Conv2dOptions(num_filters[idx], num_upsample_filters[idx], stride).stride(stride).bias(false)),
+                        torch::nn::BatchNorm2d(torch::nn::BatchNorm2dOptions(num_upsample_filters[idx]).eps(1e-3).momentum(0.01)),
+                        torch::nn::ReLU());
                     stride = static_cast<int>(round(1.0 / stride));
-                    this->deblocks.push_back(register_module("deblock_" + std::to_string(idx), torch::nn::Sequential(
-                                                                                                   torch::nn::Conv2d(torch::nn::Conv2dOptions(num_filters[idx], num_upsample_filters[idx], stride).stride(stride).bias(false)),
-                                                                                                   torch::nn::BatchNorm2d(num_upsample_filters[idx]),
-                                                                                                   torch::nn::ReLU())));
+                    register_module("deblock_" + std::to_string(idx), deblock_layers);
+                    this->deblocks.push_back(deblock_layers);
                 }
             }
         }
@@ -67,18 +75,21 @@ public:
         int c_in = std::accumulate(num_upsample_filters.begin(), num_upsample_filters.end(), 0);
         if (upsample_strides.size() > num_levels)
         {
-            this->deblocks.push_back(register_module("deblock_last", torch::nn::Sequential(
+            auto deblock_layers = torch::nn::Sequential(
                                                                          torch::nn::ConvTranspose2d(torch::nn::ConvTranspose2dOptions(c_in, c_in, upsample_strides.back()).stride(upsample_strides.back()).bias(false)),
-                                                                         torch::nn::BatchNorm2d(c_in),
-                                                                         torch::nn::ReLU())));
+                                                                         torch::nn::BatchNorm2d(torch::nn::BatchNorm2dOptions(c_in).eps(1e-3).momentum(0.01)),
+                                                                         torch::nn::ReLU());
+            register_module("deblock_last", deblock_layers);
+            this->deblocks.push_back(deblock_layers);
         }
 
+        std::cout << "blocks: " << this->blocks << std::endl;
         std::cout << "deblocks: " << this->deblocks << std::endl;
 
         num_bev_features = c_in;
     }
 
-    std::unordered_map<std::string, torch::Tensor> forward(std::unordered_map<std::string, torch::Tensor> data_dict)
+    BatchMap forward(BatchMap data_dict)
     {
         torch::Tensor spatial_features = data_dict["spatial_features"];
         std::vector<torch::Tensor> ups;
@@ -89,6 +100,7 @@ public:
         {
             x = blocks[i]->forward(x);
 
+            std::cout << "spatial_features: size(2) and sizes()" << spatial_features.size(2) << spatial_features.sizes() << std::endl;
             int stride = static_cast<int>(spatial_features.size(2) / x.size(2));
             ret_dict["spatial_features_" + std::to_string(stride) + "x"] = x;
 

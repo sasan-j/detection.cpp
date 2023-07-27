@@ -199,8 +199,11 @@ public:
     std::pair<std::vector<torch::Tensor>, torch::Tensor> generate_anchors(std::vector<torch::Tensor> grid_sizes)
     {
         assert(grid_sizes.size() == num_of_anchor_sets);
+        
         std::vector<torch::Tensor> all_anchors;
         std::vector<int32_t> num_anchors_per_location;
+
+        std::cout << "grid_sizes" << grid_sizes << '\n';
 
         for (int i = 0; i < num_of_anchor_sets; i++)
         {
@@ -211,6 +214,8 @@ public:
             auto align_center_i = align_center[i];
 
             num_anchors_per_location.push_back(anchor_rotation.size() * anchor_size.size() * anchor_height.size());
+
+
             float x_stride, y_stride, x_offset, y_offset;
             if (align_center_i)
             {
@@ -250,8 +255,10 @@ public:
         }
 
         auto options = torch::TensorOptions().dtype(torch::kInt32); // or whatever data type num_anchors_per_location holds
-        auto out = torch::from_blob(num_anchors_per_location.data(), {num_anchors_per_location.size()}, options);
+        // auto out = torch::from_blob(num_anchors_per_location.data(), {num_anchors_per_location.size()}, options);
+        auto out = torch::tensor(num_anchors_per_location, options);
 
+        std::cout << "out " << out << '\n';
         return {all_anchors, out};
     }
 };

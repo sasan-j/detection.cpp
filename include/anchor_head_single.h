@@ -19,16 +19,17 @@ class AnchorHeadSingleImpl : public torch::nn::Module
 public:
     AnchorHeadSingleImpl(int num_dir_bins, bool use_direction_classifier, int input_channels, int num_class, std::vector<std::string> class_names, torch::Tensor grid_size, std::vector<float> point_cloud_range,
                          float dir_offset = 0.78539, float dir_limit_offset=0.0, bool predict_boxes_when_training = true, bool use_multihead = false)
+                         : num_dir_bins(num_dir_bins), dir_offset(dir_offset), dir_limit_offset(dir_limit_offset), box_coder(ResidualCoder())
     {
         this->use_multihead = use_multihead;
         this->num_class = num_class;
         this->class_names = class_names;
         this->predict_boxes_when_training = predict_boxes_when_training;
-        this->num_dir_bins = num_dir_bins;
-        this->dir_offset = dir_offset;
-        this->dir_limit_offset = dir_limit_offset;
+        // this->num_dir_bins = num_dir_bins;
+        // this->dir_offset = dir_offset;
+        // this->dir_limit_offset = dir_limit_offset;
 
-        this->box_coder = ResidualCoder();
+        // this->box_coder = ResidualCoder();
 
         auto anchors = generate_anchors(grid_size, point_cloud_range, box_coder.code_size);
         this->anchors = anchors.first;
@@ -52,12 +53,24 @@ public:
         // Ignore for now, probably only for training
         // build_losses(model_cfg["LOSS_CONFIG"].toDict());
 
-        // AnchorHeadSingle Constructor
-        this->sum_num_anchors_per_location = this->num_anchors_per_location.sum().item<int>();
+        std::cout << "num_anchors_per_location" << this->num_anchors_per_location.sizes() << this->num_anchors_per_location << '\n';
 
-        this->conv_cls = register_module("conv_cls", torch::nn::Conv2d(torch::nn::Conv2dOptions(input_channels, this->sum_num_anchors_per_location * this->num_class, 1)));
-        this->conv_box = register_module("conv_box", torch::nn::Conv2d(torch::nn::Conv2dOptions(input_channels, this->sum_num_anchors_per_location * this->box_coder.code_size, 1)));
-        this->conv_dir_cls = register_module("conv_dir_cls", torch::nn::Conv2d(torch::nn::Conv2dOptions(input_channels, this->sum_num_anchors_per_location * this->num_dir_bins, 1)));
+
+        // AnchorHeadSingle Constructor
+        this->sum_num_anchors_per_location = this->num_anchors_per_location.sum().item<int64_t>();
+
+        this->conv_cls = torch::nn::Conv2d(torch::nn::Conv2dOptions(input_channels, this->sum_num_anchors_per_location * this->num_class, 1));
+        this->conv_box = torch::nn::Conv2d(torch::nn::Conv2dOptions(input_channels, this->sum_num_anchors_per_location * this->box_coder.code_size, 1));
+        this->conv_dir_cls = torch::nn::Conv2d(torch::nn::Conv2dOptions(input_channels, this->sum_num_anchors_per_location * this->num_dir_bins, 1));
+        
+        std::cout << "conv_cls " << this->conv_cls << '\n';
+        std::cout << "conv_box " << this->conv_box << '\n';
+        std::cout << "conv_dir_cls " << this->conv_dir_cls << '\n';
+
+        register_module("conv_cls", this->conv_cls);
+        register_module("conv_box", this->conv_box);
+        register_module("conv_dir_cls", this->conv_dir_cls);
+        
         init_weights();
     }
 
@@ -78,6 +91,7 @@ public:
             feature_map_size.push_back(grid_size.slice(0, 0, 2) / stride);
         }
 
+        std::cout << "feature_map_size" << feature_map_size << '\n';
         auto [anchors_list, num_anchors_per_location_list] = anchor_generator.generate_anchors(feature_map_size);
 
         if (anchor_ndim != 7)
@@ -190,7 +204,7 @@ private:
     bool predict_boxes_when_training;
     std::vector<torch::Tensor> anchors;
     torch::Tensor num_anchors_per_location;
-    int sum_num_anchors_per_location;
+    int64_t sum_num_anchors_per_location;
     ResidualCoder box_coder;
     AxisAlignedTargetAssigner target_assigner;
     torch::nn::Conv2d conv_cls{nullptr};

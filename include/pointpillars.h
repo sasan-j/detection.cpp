@@ -49,8 +49,10 @@ namespace pointpillars
       register_module("vfe", vfe);
       register_module("map_to_bev", pp_scatter);
       // not so sure about the first parameter (num_channels)
-      // backbone2d = register_module("backbone2d", BaseBEVBackbone(num_filters[0], LAYER_NUMS, LAYER_STRIDES, NUM_FILTERS, UPSAMPLE_STRIDES, NUM_UPSAMPLE_FILTERS));
-      // anchor_head = register_module("anchor_head", AnchorHeadSingle(NUM_DIR_BINS, USE_DIRECTION_CLASSIFIER, NUM_UPSAMPLE_FILTERS[2], NUM_CLASS, CLASS_NAMES, grid_size, point_cloud_range, DIR_OFFSET, DIR_LIMIT_OFFSET, true));
+      backbone2d = BaseBEVBackbone(num_filters[0], LAYER_NUMS, LAYER_STRIDES, NUM_FILTERS, UPSAMPLE_STRIDES, NUM_UPSAMPLE_FILTERS);
+      register_module("backbone2d", backbone2d);
+      anchor_head = AnchorHeadSingle(NUM_DIR_BINS, USE_DIRECTION_CLASSIFIER, 384, NUM_CLASS, CLASS_NAMES, grid_size, point_cloud_range, DIR_OFFSET, DIR_LIMIT_OFFSET, true);
+      register_module("anchor_head", anchor_head);
     }
 
     BatchMap forward(std::unordered_map<std::string, torch::Tensor> batch_dict)
@@ -65,8 +67,8 @@ namespace pointpillars
       std::cout << "spatial_feature max: " << out["spatial_features"].max() << '\n';
       out = backbone2d->forward(out);
       print_shapes(out);
-
-      // out = anchor_head->forward(out);
+      out = anchor_head->forward(out);
+      print_shapes(out);
 
       // Use one of many tensor manipulation functions.
       // x = torch::relu(fc1->forward(x.reshape({x.size(0), 784})));
@@ -80,6 +82,6 @@ namespace pointpillars
     PillarVFE vfe{nullptr};
     PointPillarScatter pp_scatter{nullptr};
     BaseBEVBackbone backbone2d{nullptr};
-    // AnchorHeadSingle anchor_head{nullptr};
+    AnchorHeadSingle anchor_head{nullptr};
   };
 }

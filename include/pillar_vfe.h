@@ -5,16 +5,16 @@
 
 // Roughly ported from https://github.com/open-mmlab/OpenPCDet/blob/557d463793f6ff63f0301e851a047d29924fb1fe/pcdet/models/backbones_3d/vfe/pillar_vfe.py
 
-class PFNLayer : public torch::nn::Module
+class PFNLayerImpl : public torch::nn::Module
 {
 
 public:
-    PFNLayer(int64_t in_channels,
+    PFNLayerImpl(int64_t in_channels,
              int64_t out_channels,
              bool use_norm = true,
              bool last_layer = false) : use_norm(use_norm), last_vfe(last_layer)
     {
-        if (!last_layer)
+        if (!this->last_vfe)
         {
             out_channels = out_channels / 2;
         }
@@ -23,8 +23,13 @@ public:
         {
 
             // BatchNorm1d model(BatchNorm1dOptions(out_channels).eps(1e-3).momentum(0.01).affine(false).track_running_stats(true));
-            this->linear = register_module("linear", torch::nn::Linear(torch::nn::LinearOptions(in_channels, out_channels).bias(false)));
-            this->norm = register_module("norm", torch::nn::BatchNorm1d(torch::nn::BatchNorm1dOptions(out_channels).eps(1e-3).momentum(0.01)));
+            this->linear = torch::nn::Linear(torch::nn::LinearOptions(in_channels, out_channels).bias(false));
+            this->norm = torch::nn::BatchNorm1d(torch::nn::BatchNorm1dOptions(out_channels).eps(1e-3).momentum(0.01));
+            std::cout << "Linear: " << this->linear << "\n";
+            std::cout << "Norm: " << this->norm << "\n";
+            
+            register_module("linear", this->linear);
+            register_module("norm", this->norm);
         }
         else
         {
@@ -54,12 +59,12 @@ public:
             x = this->linear->forward(inputs);
         }
         torch::manual_seed(0);
-        x = use_norm ? this->norm->forward(x.transpose(0, 2)).transpose(0, 2) : x;
+        x = use_norm ? this->norm->forward(x.permute({0,2,1})).permute({0,2,1}) : x;
         torch::manual_seed(1);
         x = torch::relu(x);
         x_max = std::get<0>(x.max(1, true));
 
-        if (last_vfe)
+        if (this->last_vfe)
         {
             return x_max;
         }
@@ -80,11 +85,13 @@ private:
 
 };
 
+TORCH_MODULE(PFNLayer);
+
 class PillarVFEImpl : public torch::nn::Module
 {
 private:
     std::vector<int32_t> num_filters;
-    std::vector<std::shared_ptr<PFNLayer>> pfn_layers;
+    std::vector<PFNLayer> pfn_layers;
     bool use_norm;
     bool with_distance;
     bool use_absolute_xyz;
@@ -99,14 +106,13 @@ private:
 public:
     PillarVFEImpl(std::vector<int32_t> num_filters,
               bool use_norm = true,
-              bool with_distance = true,
+              bool with_distance = false, // kitti - pointpillars
               bool use_absolute_xyz = true,
               const std::vector<float>& voxel_size = {0.05, 0.05, 0.1},
               const std::vector<float>& point_cloud_range = {0, -40, -3, 70.4, 40, 1},
-              int64_t num_point_features = 4)
+              int64_t num_point_features = 4) : num_filters(num_filters)
     {
 
-        this->num_filters = num_filters;
         this->use_norm = use_norm;
         this->with_distance = with_distance;
         this->use_absolute_xyz = use_absolute_xyz;
@@ -118,14 +124,13 @@ public:
         }
 
         assert(this->num_filters.size() > 0);
-        this->num_filters.insert(num_filters.begin(), num_point_features);
+        this->num_filters.insert(this->num_filters.begin(), num_point_features);
 
-        for (size_t i = 0; i < num_filters.size() - 1; ++i)
+        for (size_t i = 0; i < this->num_filters.size() - 1; ++i)
         {
-            int64_t in_filters = num_filters[i];
-            int64_t out_filters = num_filters[i + 1];
-            pfn_layers.push_back(
-                std::make_shared<PFNLayer>(in_filters, out_filters, this->use_norm, i >= num_filters.size() - 2));
+            int64_t in_filters = this->num_filters[i];
+            int64_t out_filters = this->num_filters[i + 1];
+            pfn_layers.push_back(PFNLayer(in_filters, out_filters, this->use_norm, i >= this->num_filters.size() - 2));
         }
 
         for (size_t i = 0; i < pfn_layers.size(); ++i)
@@ -203,6 +208,8 @@ public:
         auto mask = get_paddings_indicator(voxel_num_points, voxel_count, 0);
         mask = mask.unsqueeze(-1).to(voxel_features.dtype());
         combined_features *= mask;
+
+        std::cout << "combined_features" << combined_features.sizes() << '\n';
 
         for (auto &pfn : pfn_layers)
         {

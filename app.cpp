@@ -7,6 +7,29 @@
 #include "pointpillars.h"
 #include "utils.h"
 
+torch::Tensor add_padding(torch::Tensor tensor, int padding_value) {
+    auto options = torch::TensorOptions().dtype(tensor.dtype()).device(tensor.device());
+    auto padding_tensor = torch::full({tensor.size(0), 1}, padding_value, options);
+    return torch::cat({padding_tensor, tensor}, /*dim=*/1);
+}
+
+
+BatchMap fake_collate(BatchMap batch_dict){
+  // Collate Batch - Done (untested)
+  // We just pretend to have a batch of size 1
+  batch_dict["points"] = add_padding(batch_dict["points"], 0);
+  std::cout << "points" << batch_dict["points"].index({torch::indexing::Slice(0, 3), torch::indexing::Slice(0, torch::indexing::None)}) << '\n';
+  std::cout << "points shape:" << batch_dict["points"].sizes() << '\n';
+
+  batch_dict["voxel_coords"] = add_padding(batch_dict["voxel_coords"], 0);
+  std::cout << "voxel_coords" << batch_dict["voxel_coords"].index({torch::indexing::Slice(0, 3), torch::indexing::Slice(0, torch::indexing::None)}) << '\n';
+  std::cout << "voxel_coords shape:" << batch_dict["voxel_coords"].sizes() << '\n';
+
+  batch_dict["batch_size"] = torch::tensor({1}, torch::TensorOptions().dtype(torch::kInt32).device(torch::kCPU));
+  return batch_dict;
+}
+
+
 
 int main()
 {
@@ -37,7 +60,7 @@ int main()
 
   auto vox_out = voxelization::hard_voxelize(pcd, voxels, coors, num_points_per_voxel, voxel_size_vect, point_cloud_range_vect, max_points_voxel, max_num_voxels, 3, true);
   voxels = voxels.index({torch::indexing::Slice(0, vox_out)});
-  coors = coors.index({torch::indexing::Slice(0, vox_out)}).flip({-1});
+  coors = coors.index({torch::indexing::Slice(0, vox_out)});//.flip({-1});
   num_points_per_voxel = num_points_per_voxel.index({torch::indexing::Slice(0, vox_out)});
 
 
@@ -49,7 +72,7 @@ int main()
   std::cout << "grid_size elements: " << grid_size.index({0}).item<int64_t>() << ", " << grid_size.index({1}).item<int64_t>() << ", " << grid_size.index({2}).item<int64_t>() << '\n';
   std::cout << "voxels" << voxels.index({torch::indexing::Slice(0, 3), torch::indexing::Slice(0, 3)}) << '\n';
   std::cout << "voxels shape:" << voxels.sizes() << '\n';
-  std::cout << "coors" << coors.index({torch::indexing::Slice(0, 3)}) << '\n';
+  std::cout << "coors" << coors.index({torch::indexing::Slice(0, 5)}) << '\n';
   std::cout << "coors shape:" << coors.sizes() << '\n';
   std::cout << "points_per_voxels" << num_points_per_voxel.index({torch::indexing::Slice(0, 3)}) << '\n';
   std::cout << "points_per_voxels shape:" << num_points_per_voxel.sizes() << '\n';
@@ -76,8 +99,11 @@ int main()
   std::cout << "batch_dict before instantiating the model" << '\n';
   print_shapes(batch_dict);
 
+  batch_dict = fake_collate(batch_dict);
+  
   // PointPillar
   pointpillars::PointPillars model(voxel_size_vect, point_cloud_range_vect, max_points_voxel, max_num_voxels, grid_size);
+  std::cout << "Model was instantiated" << '\n';
 
   // Execute the model and turn its output into a tensor.
   auto output = model.forward(batch_dict);

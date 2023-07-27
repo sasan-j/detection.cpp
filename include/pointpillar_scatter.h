@@ -7,7 +7,7 @@ class PointPillarScatterImpl : public torch::nn::Module {
 
 public:
     PointPillarScatterImpl(int num_bev_features, int nx, int ny, int nz) {
-        assert(nz_ == 1);
+        assert(nz == 1);
         this->num_bev_features_ = num_bev_features;
         this->nx_ = nx;
         this->ny_ = ny;
@@ -21,7 +21,7 @@ public:
         std::vector<torch::Tensor> batch_spatial_features;
         int batch_size = coords.index({torch::indexing::Slice(), 0}).max().item<int>() + 1;
         for (int batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
-            auto spatial_feature = torch::zeros({num_bev_features_, nz_ * nx_ * ny_},
+            auto spatial_feature = torch::zeros({this->num_bev_features_, nz_ * nx_ * ny_},
                                                 pillar_features.options());
 
             auto batch_mask = coords.index({torch::indexing::Slice(), 0}) == batch_idx;
@@ -37,7 +37,7 @@ public:
         }
 
         auto batch_spatial_features_tensor = torch::stack(batch_spatial_features, 0);
-        batch_spatial_features_tensor = batch_spatial_features_tensor.view({batch_size, num_bev_features_ * nz_, ny_, nx_});
+        batch_spatial_features_tensor = batch_spatial_features_tensor.view({batch_size, this->num_bev_features_ * nz_, ny_, nx_});
         batch_dict["spatial_features"] = batch_spatial_features_tensor;
         return batch_dict;
     }

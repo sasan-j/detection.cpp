@@ -74,6 +74,11 @@ public:
         init_weights();
     }
 
+    bool is_training()
+    {
+        return false;
+    }
+
     std::pair<std::vector<torch::Tensor>, torch::Tensor> generate_anchors(
         torch::Tensor grid_size,
         std::vector<float> point_cloud_range,
@@ -171,6 +176,7 @@ std::pair<torch::Tensor, torch::Tensor> generate_predicted_boxes(int batch_size,
     
     torch::Tensor batch_cls_preds = cls_preds.view({batch_size, num_anchors, -1}).toType(torch::kFloat);
     torch::Tensor batch_box_preds = box_preds.view({batch_size, num_anchors, -1});
+    // FAIL -   what():  The size of tensor a (7) must match the size of tensor b (12) at non-singleton dimension 1
     batch_box_preds = this->box_coder.decode_torch(batch_box_preds, batch_anchors);
 
     if (dir_cls_preds.defined()) {

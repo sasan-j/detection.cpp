@@ -7,10 +7,8 @@
 // #include "iou3d_nms.h"
 #include "box_utils.h"
 
-
 // Type Aliases
 using BatchMap = std::unordered_map<std::string, torch::Tensor>;
-
 
 class ResidualCoder
 {
@@ -74,63 +72,83 @@ public:
 
     torch::Tensor decode_torch(torch::Tensor box_encodings, torch::Tensor anchors)
     {
-        auto xa = anchors.select(1, 0);
-        auto ya = anchors.select(1, 1);
-        auto za = anchors.select(1, 2);
-        auto dxa = anchors.select(1, 3);
-        auto dya = anchors.select(1, 4);
-        auto dza = anchors.select(1, 5);
-        auto ra = anchors.select(1, 6);
-        auto cas = anchors.slice(1, 7);
 
-        torch::Tensor xt, yt, zt, dxt, dyt, dzt, cost, sint, cts;
-        if (!this->encode_angle_by_sincos)
+        anchors = anchors.to(box_encodings.device());
+
+        std::cout << box_encodings.device() << anchors.device() << '\n';
+
+        auto anchors_split = anchors.split(1, /*dim=*/-1);
+        torch::Tensor xa = anchors_split[0];
+        torch::Tensor ya = anchors_split[1];
+        torch::Tensor za = anchors_split[2];
+        torch::Tensor dxa = anchors_split[3];
+        torch::Tensor dya = anchors_split[4];
+        torch::Tensor dza = anchors_split[5];
+        torch::Tensor ra = anchors_split[6];
+        std::vector<torch::Tensor> cas(anchors_split.begin() + 7, anchors_split.end());
+
+        std::vector<torch::Tensor> box_encodings_split;
+        torch::Tensor xt, yt, zt, dxt, dyt, dzt, rt, cost, sint;
+        std::vector<torch::Tensor> cts;
+
+        if (!encode_angle_by_sincos)
         {
-            xt = box_encodings.select(1, 0);
-            yt = box_encodings.select(1, 1);
-            zt = box_encodings.select(1, 2);
-            dxt = box_encodings.select(1, 3);
-            dyt = box_encodings.select(1, 4);
-            dzt = box_encodings.select(1, 5);
-            cost = box_encodings.select(1, 6);
-            sint = box_encodings.select(1, 7);
-            cts = box_encodings.slice(1, 8);
+            box_encodings_split = box_encodings.split(1, /*dim=*/-1);
+            xt = box_encodings_split[0];
+            yt = box_encodings_split[1];
+            zt = box_encodings_split[2];
+            dxt = box_encodings_split[3];
+            dyt = box_encodings_split[4];
+            dzt = box_encodings_split[5];
+            rt = box_encodings_split[6];
+            cts = std::vector<torch::Tensor>(box_encodings_split.begin() + 7, box_encodings_split.end());
         }
         else
         {
-            xt = box_encodings.select(1, 0);
-            yt = box_encodings.select(1, 1);
-            zt = box_encodings.select(1, 2);
-            dxt = box_encodings.select(1, 3);
-            dyt = box_encodings.select(1, 4);
-            dzt = box_encodings.select(1, 5);
-            cost = box_encodings.select(1, 6);
-            sint = box_encodings.select(1, 7);
-            cts = box_encodings.slice(1, 9);
+            box_encodings_split = box_encodings.split(1, /*dim=*/-1);
+            xt = box_encodings_split[0];
+            yt = box_encodings_split[1];
+            zt = box_encodings_split[2];
+            dxt = box_encodings_split[3];
+            dyt = box_encodings_split[4];
+            dzt = box_encodings_split[5];
+            cost = box_encodings_split[6];
+            sint = box_encodings_split[7];
+            cts = std::vector<torch::Tensor>(box_encodings_split.begin() + 8, box_encodings_split.end());
         }
 
-        auto diagonal = torch::sqrt(dxa.pow(2) + dya.pow(2));
-        auto xg = xt * diagonal + xa;
-        auto yg = yt * diagonal + ya;
-        auto zg = zt * dza + za;
-        auto dxg = torch::exp(dxt) * dxa;
-        auto dyg = torch::exp(dyt) * dya;
-        auto dzg = torch::exp(dzt) * dza;
+        torch::Tensor diagonal = torch::sqrt(torch::pow(dxa, 2) + torch::pow(dya, 2));
+        torch::Tensor xg = xt * diagonal + xa;
+        torch::Tensor yg = yt * diagonal + ya;
+        torch::Tensor zg = zt * dza + za;
 
-        torch::Tensor rg_cos, rg_sin, rg;
-        if (this->encode_angle_by_sincos)
+        torch::Tensor dxg = torch::exp(dxt) * dxa;
+        torch::Tensor dyg = torch::exp(dyt) * dya;
+        torch::Tensor dzg = torch::exp(dzt) * dza;
+
+        torch::Tensor rg;
+        if (encode_angle_by_sincos)
         {
-            rg_cos = cost + torch::cos(ra);
-            rg_sin = sint + torch::sin(ra);
+            torch::Tensor rg_cos = cost + torch::cos(ra);
+            torch::Tensor rg_sin = sint + torch::sin(ra);
             rg = torch::atan2(rg_sin, rg_cos);
         }
         else
         {
-            rg = cost + ra;
+            rg = rt + ra;
         }
 
-        auto cgs = torch::stack({cts + cas});
-        return torch::cat({xg, yg, zg, dxg, dyg, dzg, rg, cgs}, 1);
+        std::vector<torch::Tensor> cgs;
+        for (int i = 0; i < cts.size(); ++i)
+        {
+            cgs.push_back(cts[i] + cas[i]);
+        }
+
+        std::vector<torch::Tensor> cat_tensors = {xg, yg, zg, dxg, dyg, dzg, rg};
+        cat_tensors.insert(cat_tensors.end(), cgs.begin(), cgs.end());
+        torch::Tensor result = torch::cat(cat_tensors, /*dim=*/-1);
+
+        return result;
     }
 
 private:
@@ -199,7 +217,7 @@ public:
     std::pair<std::vector<torch::Tensor>, torch::Tensor> generate_anchors(std::vector<torch::Tensor> grid_sizes)
     {
         assert(grid_sizes.size() == num_of_anchor_sets);
-        
+
         std::vector<torch::Tensor> all_anchors;
         std::vector<int32_t> num_anchors_per_location;
 
@@ -214,7 +232,6 @@ public:
             auto align_center_i = align_center[i];
 
             num_anchors_per_location.push_back(anchor_rotation.size() * anchor_size.size() * anchor_height.size());
-
 
             float x_stride, y_stride, x_offset, y_offset;
             if (align_center_i)
@@ -274,18 +291,17 @@ public:
 class AxisAlignedTargetAssigner
 {
 public:
-
-    AxisAlignedTargetAssigner(){
-
+    AxisAlignedTargetAssigner()
+    {
     }
 
     AxisAlignedTargetAssigner(
-        std::vector<std::string> class_names, 
-        ResidualCoder box_coder, 
-        bool match_height = false, 
-        int sample_size = 512, 
-        float pos_fraction = -1, 
-        bool norm_by_num_examples = false, 
+        std::vector<std::string> class_names,
+        ResidualCoder box_coder,
+        bool match_height = false,
+        int sample_size = 512,
+        float pos_fraction = -1,
+        bool norm_by_num_examples = false,
         bool use_multihead = false)
     {
 
@@ -298,10 +314,9 @@ public:
         this->use_multihead = use_multihead;
 
         this->matched_thresholds = {
-            {"Car", 0.6}, 
-            {"Pedestrian", 0.5}, 
-            {"Cyclist", 0.5}
-        };
+            {"Car", 0.6},
+            {"Pedestrian", 0.5},
+            {"Cyclist", 0.5}};
         this->unmatched_thresholds = {{"Car", 0.45}, {"Pedestrian", 0.35}, {"Cyclist", 0.35}};
 
         this->pos_fraction = (pos_fraction >= 0) ? pos_fraction : -1;
@@ -337,16 +352,21 @@ public:
 
                 torch::Tensor mask;
 
-                if (cur_gt_classes.size(0) > 1) {
+                if (cur_gt_classes.size(0) > 1)
+                {
                     std::vector<torch::Tensor> mask_elems;
-                    for (int64_t i = 0; i < cur_gt_classes.size(0); ++i) {
+                    for (int64_t i = 0; i < cur_gt_classes.size(0); ++i)
+                    {
                         int64_t c = cur_gt_classes[i].item<int64_t>() - 1;
                         mask_elems.push_back(torch::full({}, this->class_names[c] == anchor_class_name, torch::kBool));
                     }
                     mask = torch::stack(mask_elems);
-                } else {
+                }
+                else
+                {
                     std::vector<torch::Tensor> mask_data;
-                    for(int64_t i=0; i < cur_gt_classes.size(0); ++i) {
+                    for (int64_t i = 0; i < cur_gt_classes.size(0); ++i)
+                    {
                         int64_t c = cur_gt_classes[i].item<int64_t>() - 1;
                         mask_data.push_back(torch::full({}, this->class_names[c] == anchor_class_name, torch::kBool));
                     }
@@ -368,7 +388,8 @@ public:
 
             std::vector<torch::Tensor> box_cls_labels, box_reg_targets, reg_weights;
 
-            for(auto& t : target_list) {
+            for (auto &t : target_list)
+            {
                 box_cls_labels.push_back(t["box_cls_labels"].view({-1}));
                 box_reg_targets.push_back(t["box_reg_targets"].view({-1, this->box_coder.code_size}));
                 reg_weights.push_back(t["reg_weights"].view({-1}));
@@ -377,8 +398,7 @@ public:
             std::unordered_map<std::string, std::vector<torch::Tensor>> target_dict = {
                 {"box_cls_labels", box_cls_labels},
                 {"box_reg_targets", box_reg_targets},
-                {"reg_weights", reg_weights}
-            };
+                {"reg_weights", reg_weights}};
 
             std::unordered_map<std::string, torch::Tensor> target_dict_refined;
 
@@ -402,11 +422,10 @@ public:
         return all_targets_dict;
     }
 
-
     std::unordered_map<std::string, torch::Tensor> assign_targets_single(
         torch::Tensor anchors, torch::Tensor gt_boxes, torch::Tensor gt_classes,
-        double matched_threshold, double unmatched_threshold
-    ) {
+        double matched_threshold, double unmatched_threshold)
+    {
         // Initialize tensors
         int num_anchors = anchors.size(0);
         int num_gt = gt_boxes.size(0);
@@ -417,14 +436,18 @@ public:
         torch::Tensor anchor_to_gt_argmax, anchor_to_gt_max, gt_to_anchor_argmax, gt_to_anchor_max, anchors_with_max_overlap;
         torch::Tensor gt_inds_force, pos_inds, gt_inds_over_thresh, bg_inds;
 
-        if (gt_boxes.size(0) > 0 && anchors.size(0) > 0) {
+        if (gt_boxes.size(0) > 0 && anchors.size(0) > 0)
+        {
             torch::Tensor anchor_by_gt_overlap;
-            if (this->match_height) {
-                anchor_by_gt_overlap = boxes_iou3d_gpu(anchors.index({torch::indexing::Slice(), torch::indexing::Slice(0,7)}), 
-                                                                        gt_boxes.index({torch::indexing::Slice(), torch::indexing::Slice(0,7)}));
-            } else {
-                anchor_by_gt_overlap = boxes3d_nearest_bev_iou(anchors.index({torch::indexing::Slice(), torch::indexing::Slice(0,7)}), 
-                                                                        gt_boxes.index({torch::indexing::Slice(), torch::indexing::Slice(0,7)}));
+            if (this->match_height)
+            {
+                anchor_by_gt_overlap = boxes_iou3d_gpu(anchors.index({torch::indexing::Slice(), torch::indexing::Slice(0, 7)}),
+                                                       gt_boxes.index({torch::indexing::Slice(), torch::indexing::Slice(0, 7)}));
+            }
+            else
+            {
+                anchor_by_gt_overlap = boxes3d_nearest_bev_iou(anchors.index({torch::indexing::Slice(), torch::indexing::Slice(0, 7)}),
+                                                               gt_boxes.index({torch::indexing::Slice(), torch::indexing::Slice(0, 7)}));
             }
 
             anchor_to_gt_argmax = anchor_by_gt_overlap.argmax(1);
@@ -446,14 +469,17 @@ public:
             labels.index_put_({pos_inds}, gt_classes.index({gt_inds_over_thresh}));
             gt_ids.index_put_({pos_inds}, gt_inds_over_thresh.to(torch::kInt));
             bg_inds = (anchor_to_gt_max < unmatched_threshold).nonzero().index({torch::indexing::Slice(), 0});
-        } else {
+        }
+        else
+        {
             bg_inds = torch::arange(num_anchors, anchors.options().device());
         }
 
         auto fg_inds = torch::nonzero(labels > 0).select(1, 0);
 
         int64_t num_fg = static_cast<int64_t>(this->pos_fraction * this->sample_size);
-        if (fg_inds.size(0) > num_fg) {
+        if (fg_inds.size(0) > num_fg)
+        {
             int64_t num_disabled = fg_inds.size(0) - num_fg;
             auto disable_inds = torch::randperm(fg_inds.size(0)).slice(0, 0, num_disabled);
             labels.index_put_({disable_inds}, -1);
@@ -461,13 +487,15 @@ public:
         }
 
         int64_t num_bg = this->sample_size - (labels > 0).sum().item<int64_t>();
-        if (bg_inds.size(0) > num_bg) {
+        if (bg_inds.size(0) > num_bg)
+        {
             auto enable_inds = bg_inds.index({torch::randint(0, bg_inds.size(0), {num_bg})});
             labels.index_put_({enable_inds}, 0);
         }
 
         auto bbox_targets = torch::zeros({num_anchors, this->box_coder.code_size}, anchors.options());
-        if (gt_boxes.size(0) > 0 && anchors.size(0) > 0) {
+        if (gt_boxes.size(0) > 0 && anchors.size(0) > 0)
+        {
             auto fg_gt_boxes = gt_boxes.index({anchor_to_gt_argmax.index({fg_inds}), torch::indexing::Slice()});
             auto fg_anchors = anchors.index({fg_inds, torch::indexing::Slice()});
             bbox_targets.index_put_({fg_inds, torch::indexing::Slice()}, this->box_coder.encode_torch(fg_gt_boxes, fg_anchors));
@@ -475,11 +503,14 @@ public:
 
         auto reg_weights = torch::zeros({num_anchors}, anchors.options());
 
-        if (this->norm_by_num_examples) {
+        if (this->norm_by_num_examples)
+        {
             auto num_examples = (labels >= 0).sum().item<float>();
             num_examples = num_examples > 1.0 ? num_examples : 1.0;
             reg_weights.index_put_({labels > 0}, 1.0 / num_examples);
-        } else {
+        }
+        else
+        {
             reg_weights.index_put_({labels > 0}, 1.0);
         }
 
@@ -491,7 +522,6 @@ public:
 
         return ret_dict;
     }
-
 
 private:
     std::vector<std::string> class_names;
@@ -506,8 +536,8 @@ private:
     bool use_multihead;
 };
 
-
-void print_shapes(BatchMap data){
+void print_shapes(BatchMap data)
+{
     for (auto &item : data)
     {
         std::cout << item.first << " " << item.second.sizes() << '\n';

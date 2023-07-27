@@ -1,6 +1,10 @@
 #include <torch/torch.h>
 #include <vector>
 
+#include "utils.h"
+
+// Roughly ported from https://github.com/open-mmlab/OpenPCDet/blob/557d463793f6ff63f0301e851a047d29924fb1fe/pcdet/models/backbones_3d/vfe/pillar_vfe.py
+
 class PFNLayer : public torch::nn::Module
 {
 
@@ -164,7 +168,7 @@ public:
     //     return paddings_indicator;
     // }
 
-    std::unordered_map<std::string, torch::Tensor> forward(std::unordered_map<std::string, torch::Tensor> batch_dict)
+    BatchMap forward(std::unordered_map<std::string, torch::Tensor> batch_dict)
     {
         auto voxel_features = batch_dict["voxels"];
         auto voxel_num_points = batch_dict["voxel_num_points"];

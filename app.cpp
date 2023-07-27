@@ -5,6 +5,8 @@
 #include <vector>
 #include "voxelization.h"
 #include "pointpillars.h"
+#include "utils.h"
+
 
 int main()
 {
@@ -19,11 +21,8 @@ int main()
   at::Tensor voxel_size = torch::tensor({0.16, 0.16, 4.0}, torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU));
   at::Tensor point_cloud_range = torch::tensor({-39.68, -39.68,  -3.  ,  39.68,  39.68,   1.}, torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU));
 
-  // Assuming point_cloud_range and voxel_size are already defined torch::Tensors
-  torch::Tensor grid_size = (point_cloud_range.slice(/*dim=*/0, /*start=*/3) -
-                           point_cloud_range.slice(/*dim=*/0, /*start=*/0, /*end=*/3)) / voxel_size;
-
-  grid_size = grid_size.round().to(torch::kLong);
+  torch::Tensor grid_size = (point_cloud_range.slice(0, 3, 6) - point_cloud_range.slice(0, 0, 3)) / voxel_size;
+  grid_size = grid_size.round().to(torch::kLong).reshape({-1});
   torch::Tensor input_feat_shape = grid_size.slice(/*dim=*/0, /*start=*/0, /*end=*/2);
 
   auto voxel_size_vect = std::vector(voxel_size.data_ptr<float>(), voxel_size.data_ptr<float>() + voxel_size.numel());
@@ -42,21 +41,43 @@ int main()
   num_points_per_voxel = num_points_per_voxel.index({torch::indexing::Slice(0, vox_out)});
 
 
+
+  std::cout << "points" << pcd.index({torch::indexing::Slice(0, 3), torch::indexing::Slice(0, 3)}) << '\n';
+  std::cout << "points shape:" << pcd.sizes() << '\n';
   std::cout << "grid_size" << grid_size << '\n';
+  std::cout << "grid_size shape" << grid_size.sizes() << '\n';
+  std::cout << "grid_size elements: " << grid_size.index({0}).item<int64_t>() << ", " << grid_size.index({1}).item<int64_t>() << ", " << grid_size.index({2}).item<int64_t>() << '\n';
   std::cout << "voxels" << voxels.index({torch::indexing::Slice(0, 3), torch::indexing::Slice(0, 3)}) << '\n';
+  std::cout << "voxels shape:" << voxels.sizes() << '\n';
   std::cout << "coors" << coors.index({torch::indexing::Slice(0, 3)}) << '\n';
+  std::cout << "coors shape:" << coors.sizes() << '\n';
   std::cout << "points_per_voxels" << num_points_per_voxel.index({torch::indexing::Slice(0, 3)}) << '\n';
+  std::cout << "points_per_voxels shape:" << num_points_per_voxel.sizes() << '\n';
+
+  // Verifications to see if we're getting the right shapes
+  assert(pcd.sizes() == torch::IntArrayRef({65536, 4}));
+  assert(torch::equal(grid_size, torch::tensor({496, 496, 1}, torch::TensorOptions().dtype(torch::kLong).device(torch::kCPU))));
+  assert(grid_size.sizes() == torch::IntArrayRef({3}));
+  assert(voxels.sizes() == torch::IntArrayRef({6941, max_points_voxel, pcd.size(1)}));
+  assert(coors.sizes() == torch::IntArrayRef({6941, 3}));
+  assert(num_points_per_voxel.sizes() == torch::IntArrayRef({6941}));
+
+  // Create a vector of inputs.
+  BatchMap batch_dict;
+  batch_dict["points"] = pcd;
+  batch_dict["voxels"] = voxels;
+  batch_dict["voxel_coords"] = coors;
+  batch_dict["voxel_num_points"] = num_points_per_voxel;
+  batch_dict["batch_size"] = torch::tensor({1}, torch::TensorOptions().dtype(torch::kInt32).device(torch::kCPU));
+  batch_dict["use_lead_xyz"] = torch::tensor({false}, torch::TensorOptions().dtype(torch::kBool).device(torch::kCPU));
+  batch_dict["frame_id"] = torch::tensor({0}, torch::TensorOptions().dtype(torch::kInt32).device(torch::kCPU));
 
 
+  std::cout << "batch_dict before instantiating the model" << '\n';
+  print_shapes(batch_dict);
 
   // PointPillar
   pointpillars::PointPillars model(voxel_size_vect, point_cloud_range_vect, max_points_voxel, max_num_voxels, grid_size);
-
-  // Create a vector of inputs.
-  std::unordered_map<std::string, torch::Tensor> batch_dict;
-  batch_dict["voxels"] = voxels;
-  batch_dict["coors"] = coors;
-  batch_dict["num_points_per_voxel"] = num_points_per_voxel;
 
   // Execute the model and turn its output into a tensor.
   auto output = model.forward(batch_dict);
@@ -64,7 +85,7 @@ int main()
   //// VFE - Done (untested)
   //// Map to BEV - Done (untested)
   //// Backbone 2d - Done (untested)
-  //// Dense Head
+  //// Dense Head - Done (untested)
 
 
 

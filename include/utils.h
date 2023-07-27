@@ -8,6 +8,10 @@
 #include "box_utils.h"
 
 
+// Type Aliases
+using BatchMap = std::unordered_map<std::string, torch::Tensor>;
+
+
 class ResidualCoder
 {
 public:
@@ -493,4 +497,12 @@ private:
     std::map<std::string, float> matched_thresholds;
     std::map<std::string, float> unmatched_thresholds;
     bool use_multihead;
+};
+
+
+void print_shapes(BatchMap data){
+    for (auto &item : data)
+    {
+        std::cout << item.first << " " << item.second.sizes() << '\n';
+    }
 };

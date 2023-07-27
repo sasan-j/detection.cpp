@@ -45,19 +45,23 @@ namespace pointpillars
 
       // PillarVFE
       vfe = register_module("vfe", PillarVFE(num_filters, true, true, true, voxel_size, point_cloud_range, 4));
-      pp_scatter = register_module("map_to_bev", PointPillarScatter(num_filters[0], grid_size[0].item<int64_t>(), grid_size[1].item<int64_t>(), grid_size[2].item<int64_t>()));
+      pp_scatter = register_module("map_to_bev", PointPillarScatter(num_filters[0], grid_size.index({0}).item<int64_t>(), grid_size.index({1}).item<int64_t>(), grid_size.index({2}).item<int64_t>()));
       // not so sure about the first parameter (num_channels)
       backbone2d = register_module("backbone2d", BaseBEVBackbone(num_filters[0], LAYER_NUMS, LAYER_STRIDES, NUM_FILTERS, UPSAMPLE_STRIDES, NUM_UPSAMPLE_FILTERS));
       anchor_head = register_module("anchor_head", AnchorHeadSingle(NUM_DIR_BINS, USE_DIRECTION_CLASSIFIER, NUM_UPSAMPLE_FILTERS[2], NUM_CLASS, CLASS_NAMES, grid_size, point_cloud_range, DIR_OFFSET, DIR_LIMIT_OFFSET, true));
     }
 
     // Implement the Net's algorithm.
-    std::unordered_map<std::string, torch::Tensor> forward(std::unordered_map<std::string, torch::Tensor> batch_dict)
+    BatchMap forward(std::unordered_map<std::string, torch::Tensor> batch_dict)
     {
 
       auto out = vfe->forward(batch_dict);
+      std::cout << "PillarVFE just ran and we didn't crash!\n";
+      print_shapes(out);
+
       out = pp_scatter->forward(out);
       out = backbone2d->forward(out);
+      out = anchor_head->forward(out);
 
       // Use one of many tensor manipulation functions.
       // x = torch::relu(fc1->forward(x.reshape({x.size(0), 784})));
@@ -73,5 +77,4 @@ namespace pointpillars
     BaseBEVBackbone backbone2d{nullptr};
     AnchorHeadSingle anchor_head{nullptr};
   };
-
 }

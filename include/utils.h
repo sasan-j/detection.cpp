@@ -191,7 +191,7 @@ private:
 class AnchorGenerator
 {
 public:
-    std::vector<std::vector<float>> anchor_sizes;
+    std::vector<std::vector<std::vector<float>>> anchor_sizes;
     std::vector<std::vector<float>> anchor_rotations;
     std::vector<std::vector<float>> anchor_bottom_heights;
     std::vector<bool> align_center;
@@ -199,7 +199,7 @@ public:
     std::vector<float> anchor_range;
 
     AnchorGenerator(std::vector<float> anchor_range,
-                    std::vector<std::vector<float>> anchor_sizes = {{3.9, 1.6, 1.56}, {0.8, 0.6, 1.73}, {1.76, 0.6, 1.73}},
+                    std::vector<std::vector<std::vector<float>>> anchor_sizes = {{{3.9, 1.6, 1.56}}, {{0.8, 0.6, 1.73}}, {{1.76, 0.6, 1.73}}},
                     std::vector<std::vector<float>> anchor_rotations = {{0, 1.57}, {0, 1.57}, {0, 1.57}},
                     std::vector<std::vector<float>> anchor_bottom_heights = {{-1.78}, {-0.6}, {-0.6}},
                     std::vector<bool> align_center = {false, false, false})
@@ -231,6 +231,10 @@ public:
             auto anchor_height = anchor_bottom_heights[i];
             auto align_center_i = align_center[i];
 
+            std::cout << "anchor_size " << anchor_size << " size: " << anchor_size.size() << '\n';
+            std::cout << "anchor_height " << anchor_height << " size: " << anchor_height.size() << '\n';
+            std::cout << "anchor_rotation " << anchor_rotation << " size: " << anchor_rotation.size() << '\n';
+
             num_anchors_per_location.push_back(anchor_rotation.size() * anchor_size.size() * anchor_height.size());
 
             float x_stride, y_stride, x_offset, y_offset;
@@ -257,7 +261,7 @@ public:
             int num_anchor_size = anchor_size.size();
             int num_anchor_rotation = anchor_rotation.size();
             auto anchor_rotation_tensor = torch::tensor(anchor_rotation, options);
-            auto anchor_size_tensor = torch::tensor(anchor_size, options);
+            auto anchor_size_tensor = torch::tensor(anchor_size[0], options).reshape({1, -1});
             auto anchor_grid = torch::meshgrid({x_shifts, y_shifts, z_shifts});
             auto anchors = torch::stack(anchor_grid, -1);
             anchors = anchors.unsqueeze(3).expand({-1, -1, -1, num_anchor_size, -1});

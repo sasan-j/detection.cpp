@@ -31,6 +31,9 @@ public:
         std::vector<int> c_in_list = {input_channels};
         c_in_list.insert(c_in_list.end(), num_filters.begin(), num_filters.end() - 1);
 
+        this->blocks = torch::nn::ModuleList();
+        this->deblocks = torch::nn::ModuleList();
+
         for (int idx = 0; idx < num_levels; ++idx)
         {
             auto cur_layers = torch::nn::Sequential(
@@ -44,20 +47,27 @@ public:
                 cur_layers->push_back(torch::nn::BatchNorm2d(torch::nn::BatchNorm2dOptions(num_filters[idx]).eps(1e-3).momentum(0.01)));
                 cur_layers->push_back(torch::nn::ReLU());
             }
-            register_module("block_" + std::to_string(idx), cur_layers);
-            this->blocks.push_back(cur_layers);
+            // register_module("blocks_" + std::to_string(idx), cur_layers);
+            // this->blocks.push_back(cur_layers);
+            this->blocks->push_back(cur_layers);
 
             if (upsample_strides.size() > 0)
             {
                 int stride = upsample_strides[idx];
-                if (stride > 1 || (stride == 1 && this->USE_CONV_FOR_NO_STRIDE))
+                if (stride > 1 || (stride == 1 && ~this->USE_CONV_FOR_NO_STRIDE))
                 {
                     auto deblock_layers = torch::nn::Sequential(
                         torch::nn::ConvTranspose2d(torch::nn::ConvTranspose2dOptions(num_filters[idx], num_upsample_filters[idx], upsample_strides[idx]).stride(upsample_strides[idx]).bias(false)),
                         torch::nn::BatchNorm2d(torch::nn::BatchNorm2dOptions(num_upsample_filters[idx]).eps(1e-3).momentum(0.01)),
                         torch::nn::ReLU());
-                    register_module("deblock_" + std::to_string(idx), deblock_layers);
-                    this->deblocks.push_back(deblock_layers);
+                    // register_module("deblocks_" + std::to_string(idx), deblock_layers);
+                    auto named_params = deblock_layers->named_parameters();
+                    for (auto iter = named_params.begin(); iter != named_params.end(); ++iter)
+                    {
+                        std::cout << iter->key() << iter->value().sizes() << std::endl;
+                    }
+                    std::cout << deblock_layers << std::endl;
+                    this->deblocks->push_back(deblock_layers);
                 }
                 else
                 {
@@ -66,8 +76,16 @@ public:
                         torch::nn::BatchNorm2d(torch::nn::BatchNorm2dOptions(num_upsample_filters[idx]).eps(1e-3).momentum(0.01)),
                         torch::nn::ReLU());
                     stride = static_cast<int>(round(1.0 / stride));
-                    register_module("deblock_" + std::to_string(idx), deblock_layers);
-                    this->deblocks.push_back(deblock_layers);
+                    // register_module("deblocks_" + std::to_string(idx), deblock_layers);
+
+
+                    auto named_params = deblock_layers->named_parameters();
+                    for (auto iter = named_params.begin(); iter != named_params.end(); ++iter)
+                    {
+                        std::cout << iter->key() << iter->value().sizes() << std::endl;
+                    }
+                    std::cout << deblock_layers << std::endl;
+                    this->deblocks->push_back(deblock_layers);
                 }
             }
         }
@@ -79,14 +97,25 @@ public:
                                                                          torch::nn::ConvTranspose2d(torch::nn::ConvTranspose2dOptions(c_in, c_in, upsample_strides.back()).stride(upsample_strides.back()).bias(false)),
                                                                          torch::nn::BatchNorm2d(torch::nn::BatchNorm2dOptions(c_in).eps(1e-3).momentum(0.01)),
                                                                          torch::nn::ReLU());
-            register_module("deblock_last", deblock_layers);
-            this->deblocks.push_back(deblock_layers);
+            // register_module("deblock_last", deblock_layers);
+            this->deblocks->push_back(deblock_layers);
         }
 
         std::cout << "blocks: " << this->blocks << std::endl;
         std::cout << "deblocks: " << this->deblocks << std::endl;
 
+        register_module("blocks", this->blocks);
+        register_module("deblocks", this->deblocks);
+
         num_bev_features = c_in;
+
+        std::cout << "NAMED PARAMETERS: " << std::endl;
+        auto named_params = this->named_parameters();
+        for (auto iter = named_params.begin(); iter != named_params.end(); ++iter)
+        {
+            std::cout << iter->key() << std::endl;
+        }
+        
     }
 
     BatchMap forward(BatchMap data_dict)
@@ -96,17 +125,23 @@ public:
         std::unordered_map<std::string, torch::Tensor> ret_dict;
         torch::Tensor x = spatial_features;
 
-        for (size_t i = 0; i < this->blocks.size(); ++i)
+        // for (auto layer : this->blocks)
+        // {
+        //     x = layer->forward(x);
+        //     ups.push_back(x);
+        // }
+
+        for (size_t i = 0; i < this->blocks->size(); ++i)
         {
-            x = blocks[i]->forward(x);
+            x = blocks[i]->as<torch::nn::Sequential>()->forward(x);
 
             std::cout << "spatial_features: size(2) and sizes()" << spatial_features.size(2) << spatial_features.sizes() << std::endl;
             int stride = static_cast<int>(spatial_features.size(2) / x.size(2));
             ret_dict["spatial_features_" + std::to_string(stride) + "x"] = x;
 
-            if (this->deblocks.size() > 0)
+            if (this->deblocks->size() > 0)
             {
-                ups.push_back(this->deblocks[i]->forward(x));
+                ups.push_back(this->deblocks[i]->as<torch::nn::Sequential>()->forward(x));
             }
             else
             {
@@ -123,9 +158,9 @@ public:
             x = ups[0];
         }
 
-        if (this->deblocks.size() > this->blocks.size())
+        if (this->deblocks->size() > this->blocks->size())
         {
-            x = this->deblocks.back()->forward(x);
+            x = this->deblocks[this->deblocks->size()-1]->as<torch::nn::Sequential>()->forward(x);
         }
 
         data_dict["spatial_features_2d"] = x;
@@ -140,8 +175,8 @@ private:
     std::vector<int> num_filters;
     std::vector<int> upsample_strides;
     std::vector<int> num_upsample_filters;
-    std::vector<torch::nn::Sequential> blocks = {};
-    std::vector<torch::nn::Sequential> deblocks = {};
+    torch::nn::ModuleList blocks{nullptr};
+    torch::nn::ModuleList deblocks{nullptr};
     int num_bev_features;
 };
 

@@ -135,7 +135,12 @@ public:
 
         for (size_t i = 0; i < pfn_layers.size(); ++i)
         {
-            register_module("pfn_" + std::to_string(i), pfn_layers[i]);
+            if (i == 0) {
+                register_module("pfn_layers", pfn_layers[i]);
+            } else {
+                register_module("pfn_layers_" + std::to_string(i), pfn_layers[i]);
+            }
+            
         }
         
 

@@ -58,6 +58,8 @@ int main()
   at::Tensor coors = torch::zeros({max_num_voxels, 3}, torch::TensorOptions().dtype(torch::kInt32).device(torch::kCPU));
   at::Tensor num_points_per_voxel = torch::zeros({max_num_voxels}, torch::TensorOptions().dtype(torch::kInt32).device(torch::kCPU));
 
+  std::cout << "voxels before voxelization" << voxels.sizes() << '\n';
+
   auto vox_out = voxelization::hard_voxelize(pcd, voxels, coors, num_points_per_voxel, voxel_size_vect, point_cloud_range_vect, max_points_voxel, max_num_voxels, 3, true);
   voxels = voxels.index({torch::indexing::Slice(0, vox_out)});
   coors = coors.index({torch::indexing::Slice(0, vox_out)});//.flip({-1});
@@ -97,6 +99,7 @@ int main()
 
 
   std::cout << "batch_dict before instantiating the model" << '\n';
+  std::cout << "##############################!\n";
   print_shapes(batch_dict);
 
   batch_dict = fake_collate(batch_dict);

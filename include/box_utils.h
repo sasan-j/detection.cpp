@@ -145,10 +145,11 @@ std::pair<torch::Tensor, torch::Tensor> class_agnostic_nms(
 
     torch::Tensor scores_mask;
 
+
     if(score_thresh.has_value()) {
         scores_mask = box_scores.ge(score_thresh.value());
         box_scores = torch::masked_select(box_scores, scores_mask);
-        box_preds = torch::masked_select(box_preds, scores_mask);
+        box_preds = box_preds.index({scores_mask});
     }
 
     torch::Tensor selected;
@@ -157,16 +158,16 @@ std::pair<torch::Tensor, torch::Tensor> class_agnostic_nms(
         std::tuple<torch::Tensor, torch::Tensor> topk_result = 
             torch::topk(box_scores, std::min(nms_config.NMS_PRE_MAXSIZE, static_cast<int>(box_scores.size(0))));
 
-        torch::Tensor box_scores_nms = std::get<0>(topk_result);
+        torch::Tensor box_scores_nms = std::get<0>(topk_result).to(torch::kCUDA).contiguous();
         torch::Tensor indices = std::get<1>(topk_result);
 
-        torch::Tensor boxes_for_nms = box_preds.index_select(0, indices);
+        torch::Tensor boxes_for_nms = box_preds.index({indices}).to(torch::kCUDA).contiguous();
 
         if (nms_config.NMS_TYPE == "nms_gpu") {
             auto keep_idx = nms_gpu_wrapper(
                 boxes_for_nms.slice(1, 0, 7), box_scores_nms, nms_config.NMS_THRESH /*, Other arguments in nms_config */);
 
-            selected = indices.index_select(0, keep_idx.slice(0, 0, nms_config.NMS_POST_MAXSIZE));
+            selected = indices.to(torch::kCUDA).index({keep_idx.slice(0, 0, nms_config.NMS_POST_MAXSIZE)});
         // } else if (nms_config.NMS_TYPE == "nms_cpu") {
         //     auto keep_idx_and_selected_scores = iou3d_nms_utils::nms_cpu(
         //         boxes_for_nms.slice(1, 0, 7), box_scores_nms, nms_config.NMS_THRESH /*, Other arguments in nms_config */);
@@ -180,9 +181,11 @@ std::pair<torch::Tensor, torch::Tensor> class_agnostic_nms(
         } 
     }
 
+    selected = selected.to(torch::kCPU);
+
     if(score_thresh.has_value()) {
         torch::Tensor original_idxs = torch::nonzero(scores_mask).view(-1);
-        selected = original_idxs.index_select(0, selected);
+        selected = original_idxs.index({selected});
     }
 
     return std::make_pair(selected, src_box_scores.index_select(0, selected));

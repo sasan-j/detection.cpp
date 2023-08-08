@@ -184,14 +184,23 @@ struct PostProcessingConfig {
             batch_mask = torch::tensor(index);
         }
 
-        torch::Tensor box_preds = batch_dict["batch_box_preds"].index_select(0, batch_mask);
+        std::cout << "batch_mask: " << batch_mask << std::endl;
+        std::cout << "batch box_preds: " << batch_dict["batch_box_preds"].sizes() << std::endl;
+
+        torch::Tensor box_preds = batch_dict["batch_box_preds"].index({batch_mask});
+        std::cout << "box_preds: " << box_preds.sizes() << std::endl;
+
         torch::Tensor src_box_preds = box_preds;
 
         torch::Tensor cls_preds, src_cls_preds, label_preds;
 
-        cls_preds = batch_dict["batch_cls_preds"].index_select(0, batch_mask);
+
+        std::cout << "batch_dict - batch_cls_preds: " << batch_dict["batch_cls_preds"].sizes() << std::endl;
+        std::cout << "batch_mask: " << batch_mask << std::endl;
+        cls_preds = batch_dict["batch_cls_preds"].index({batch_mask});
         src_cls_preds = cls_preds;
         
+        std::cout << "cls_preds: " << cls_preds.sizes() << std::endl;
         TORCH_CHECK(cls_preds.size(1) == 1 || cls_preds.size(1) == NUM_CLASS, "cls_preds shape mismatch");
 
         if (!batch_dict["cls_preds_normalized"].item<bool>()) {
@@ -223,9 +232,6 @@ struct PostProcessingConfig {
         torch::Tensor final_scores = selected_scores;
         torch::Tensor final_labels = label_preds.index({selected});
         torch::Tensor final_boxes = box_preds.index({selected});
-
-        recall_dict = this->generate_recall_record(
-            final_boxes, recall_dict, index, batch_dict, post_processing_config.RECALL_THRESH_LIST);
 
         std::unordered_map<std::string, torch::Tensor> record_dict = {
             {"pred_boxes", final_boxes},

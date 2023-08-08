@@ -54,7 +54,7 @@ namespace pointpillars
       load_parameters("pointpillars_weights_simplified.pt");
     }
 
-    std::pair<std::vector<BatchMap>, BatchMap> forward(std::unordered_map<std::string, torch::Tensor> batch_dict)
+    std::vector<BatchMap> forward(std::unordered_map<std::string, torch::Tensor> batch_dict)
     {
       auto out = vfe->forward(batch_dict);
       std::cout << "After PillarVFE!\n";
@@ -161,13 +161,12 @@ struct PostProcessingConfig {
 };
 
 
-    std::pair<std::vector<BatchMap>, BatchMap> postprocess(BatchMap batch_dict)
+    std::vector<BatchMap> postprocess(BatchMap batch_dict)
     {
       auto nms_config = NMSConfig{false, "nms_gpu", 0.01, 4096, 500};
       auto post_processing_config = PostProcessingConfig{std::vector<double>{0.3, 0.5, 0.7}, 0.1, false, "kitti"};
 
       auto batch_size = batch_dict["batch_size"][0].item<int>();
-      std::unordered_map<std::string, torch::Tensor> recall_dict;
       std::vector<BatchMap> pred_dicts;
 
       for (int index = 0; index < batch_size; index++)
@@ -189,6 +188,12 @@ struct PostProcessingConfig {
 
         torch::Tensor box_preds = batch_dict["batch_box_preds"].index({batch_mask});
         std::cout << "box_preds: " << box_preds.sizes() << std::endl;
+
+        std::cout << "points orig: " << batch_dict["points"].sizes() << std::endl;
+        std::cout << "points preview before: " << batch_dict["points"].index({torch::indexing::Slice(0, 5)}) << std::endl;
+        torch::Tensor points = batch_dict["points"].index_select(0, (batch_dict["points"].select(1, 0) == index).nonzero().squeeze()).slice(1,1);
+        std::cout << "points: " << points.sizes() << std::endl;
+        std::cout << "points preview after: " << points.index({torch::indexing::Slice(0, 5)}) << std::endl;
 
         torch::Tensor src_box_preds = box_preds;
 
@@ -234,12 +239,13 @@ struct PostProcessingConfig {
         torch::Tensor final_boxes = box_preds.index({selected});
 
         std::unordered_map<std::string, torch::Tensor> record_dict = {
+            {"points", points},
             {"pred_boxes", final_boxes},
             {"pred_scores", final_scores},
             {"pred_labels", final_labels}};
         pred_dicts.push_back(record_dict);
       }
-      return std::make_pair(pred_dicts,recall_dict);
+      return pred_dicts;
     }
 
 

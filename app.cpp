@@ -14,6 +14,26 @@ torch::Tensor add_padding(torch::Tensor tensor, int padding_value) {
 }
 
 
+void save_map(const std::string& filename, const std::unordered_map<std::string, torch::Tensor>& map) {
+  c10::Dict<std::string, torch::Tensor> ivalue_map;
+  for (const auto& kv : map) {
+      ivalue_map.insert(kv.first, kv.second);
+  }
+
+  torch::IValue ivalue(ivalue_map);
+
+  auto pickle_bytes = torch::pickle_save(ivalue);
+
+  auto pickle_out = torch::pickle_save(ivalue.toGenericDict());
+  std::ofstream outputFile(filename, std::ios::binary);
+
+  if (outputFile.is_open()) {
+      outputFile.write(pickle_out.data(), pickle_out.size());
+      outputFile.close();
+  }
+}
+
+
 BatchMap fake_collate(BatchMap batch_dict){
   // Collate Batch - Done (untested)
   // We just pretend to have a batch of size 1
@@ -30,13 +50,19 @@ BatchMap fake_collate(BatchMap batch_dict){
 }
 
 
-
 int main()
 {
   // torch::Tensor dummy_pcd = torch::rand({65536, 4});
-  std::string file_path = "rc_scaled.bin";
+  // std::string file_path = "rc_scaled.bin";
+  std::string file_path = "1687261555.576275000.bin";
   auto pcd = torch::from_file(file_path, false, 65536 * 4, torch::kFloat32);
   pcd = pcd.view({-1, 4});
+
+  std::cout << "points" << pcd.sizes() << '\n';
+
+  pcd.select(1, 2) -= 1.6;
+  // pcd.select(1, 2).clamp_(-3, 1);
+
   std::cout << pcd.index({torch::indexing::Slice(0, 5), torch::indexing::Slice()}) << std::endl;
   std::cout << pcd.index({torch::indexing::Slice(-5), torch::indexing::Slice()}) << std::endl;
 
@@ -83,9 +109,9 @@ int main()
   assert(pcd.sizes() == torch::IntArrayRef({65536, 4}));
   assert(torch::equal(grid_size, torch::tensor({496, 496, 1}, torch::TensorOptions().dtype(torch::kLong).device(torch::kCPU))));
   assert(grid_size.sizes() == torch::IntArrayRef({3}));
-  assert(voxels.sizes() == torch::IntArrayRef({6941, max_points_voxel, pcd.size(1)}));
-  assert(coors.sizes() == torch::IntArrayRef({6941, 3}));
-  assert(num_points_per_voxel.sizes() == torch::IntArrayRef({6941}));
+  // assert(voxels.sizes() == torch::IntArrayRef({6941, max_points_voxel, pcd.size(1)}));
+  // assert(coors.sizes() == torch::IntArrayRef({6941, 3}));
+  // assert(num_points_per_voxel.sizes() == torch::IntArrayRef({6941}));
 
   // Create a vector of inputs.
   BatchMap batch_dict;
@@ -109,30 +135,20 @@ int main()
   std::cout << "Model was instantiated" << '\n';
 
   // Execute the model and turn its output into a tensor.
-  auto output = model.forward(batch_dict);
-  auto pred_dicts = output.first;
-  auto recall_dict = output.second;
+  auto pred_dicts = model.forward(batch_dict);
+
+  std::cout << "pred_dict" << '\n';
+
+  auto batch_preds = pred_dicts[0];
+
+  // for (const auto& kv : batch_preds) {
+  //   std::cout << kv.first << kv.second << '\n';
+  // }
+
 
   std::cout << "output" << '\n';
 
-  // c10::Dict<std::string, torch::Tensor> ivalue_map;
-  // for (const auto& kv : output) {
-  //     ivalue_map.insert(kv.first, kv.second);
-  // }
-
-  // torch::IValue ivalue(ivalue_map);
-
-  // auto pickle_bytes = torch::pickle_save(ivalue);
-
-
-
-  // auto pickle_out = torch::pickle_save(ivalue.toGenericDict());
-  // std::ofstream outputFile("output.pt", std::ios::binary);
-
-  // if (outputFile.is_open()) {
-  //     outputFile.write(pickle_out.data(), pickle_out.size());
-  //     outputFile.close();
-  // }
+  save_map("output.pt", batch_preds);
 
 
   // torch::jit::script::Module voxelizer;

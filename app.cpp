@@ -110,12 +110,29 @@ int main()
 
   // Execute the model and turn its output into a tensor.
   auto output = model.forward(batch_dict);
+  auto pred_dicts = output.first;
+  auto recall_dict = output.second;
 
-  //// VFE - Done (untested)
-  //// Map to BEV - Done (untested)
-  //// Backbone 2d - Done (untested)
-  //// Dense Head - Done (untested)
+  std::cout << "output" << '\n';
 
+  // c10::Dict<std::string, torch::Tensor> ivalue_map;
+  // for (const auto& kv : output) {
+  //     ivalue_map.insert(kv.first, kv.second);
+  // }
+
+  // torch::IValue ivalue(ivalue_map);
+
+  // auto pickle_bytes = torch::pickle_save(ivalue);
+
+
+
+  // auto pickle_out = torch::pickle_save(ivalue.toGenericDict());
+  // std::ofstream outputFile("output.pt", std::ios::binary);
+
+  // if (outputFile.is_open()) {
+  //     outputFile.write(pickle_out.data(), pickle_out.size());
+  //     outputFile.close();
+  // }
 
 
   // torch::jit::script::Module voxelizer;
@@ -140,3 +157,4 @@ int main()
 
   std::cout << "ok\n";
 }
+

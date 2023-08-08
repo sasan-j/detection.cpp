@@ -102,3 +102,88 @@ torch::Tensor boxes_iou3d_gpu(torch::Tensor boxes_a, torch::Tensor boxes_b) {
 
     return iou3d;
 }
+
+struct NMSConfig
+{
+  bool MULTI_CLASSES_NMS = false;
+  std::string NMS_TYPE = "nms_gpu";
+  float NMS_THRESH = 0.01;
+  int NMS_PRE_MAXSIZE = 4096;
+  int NMS_POST_MAXSIZE = 500;
+};
+
+
+
+torch::Tensor nms_gpu_wrapper(
+    /* This is a high level function */
+    torch::Tensor boxes, torch::Tensor scores, float thresh, 
+    c10::optional<int> pre_maxsize = c10::nullopt) {
+
+    TORCH_CHECK(boxes.size(1) == 7, "Expected boxes to have shape (N, 7)");
+
+    torch::Tensor order = std::get<1>(scores.sort(0, true));
+    
+    if (pre_maxsize.has_value()) {
+        order = order.slice(0, 0, pre_maxsize.value());
+    }
+
+    boxes = boxes.index_select(0, order).contiguous();
+    torch::Tensor keep = torch::empty({boxes.size(0)}, torch::kInt64);
+    
+    int num_out = nms_gpu(boxes, keep, thresh);
+    
+    return order.index_select(0, keep.slice(0, 0, num_out).to(torch::kCUDA)).contiguous();
+}
+
+
+
+std::pair<torch::Tensor, torch::Tensor> class_agnostic_nms(
+    torch::Tensor box_scores, torch::Tensor box_preds, 
+    NMSConfig nms_config, torch::optional<double> score_thresh = torch::nullopt) {
+
+    torch::Tensor src_box_scores = box_scores.clone();
+
+    torch::Tensor scores_mask;
+
+    if(score_thresh.has_value()) {
+        scores_mask = box_scores.ge(score_thresh.value());
+        box_scores = torch::masked_select(box_scores, scores_mask);
+        box_preds = torch::masked_select(box_preds, scores_mask);
+    }
+
+    torch::Tensor selected;
+
+    if(box_scores.size(0) > 0) {
+        std::tuple<torch::Tensor, torch::Tensor> topk_result = 
+            torch::topk(box_scores, std::min(nms_config.NMS_PRE_MAXSIZE, static_cast<int>(box_scores.size(0))));
+
+        torch::Tensor box_scores_nms = std::get<0>(topk_result);
+        torch::Tensor indices = std::get<1>(topk_result);
+
+        torch::Tensor boxes_for_nms = box_preds.index_select(0, indices);
+
+        if (nms_config.NMS_TYPE == "nms_gpu") {
+            auto keep_idx = nms_gpu_wrapper(
+                boxes_for_nms.slice(1, 0, 7), box_scores_nms, nms_config.NMS_THRESH /*, Other arguments in nms_config */);
+
+            selected = indices.index_select(0, keep_idx.slice(0, 0, nms_config.NMS_POST_MAXSIZE));
+        // } else if (nms_config.NMS_TYPE == "nms_cpu") {
+        //     auto keep_idx_and_selected_scores = iou3d_nms_utils::nms_cpu(
+        //         boxes_for_nms.slice(1, 0, 7), box_scores_nms, nms_config.NMS_THRESH /*, Other arguments in nms_config */);
+
+        //     torch::Tensor keep_idx = keep_idx_and_selected_scores.first;
+        //     torch::Tensor selected_scores = keep_idx_and_selected_scores.second;
+
+        //     selected = indices.index_select(0, keep_idx.slice(0, 0, nms_config.NMS_POST_MAXSIZE));
+        } else {
+            throw std::runtime_error("Invalid nms type");
+        } 
+    }
+
+    if(score_thresh.has_value()) {
+        torch::Tensor original_idxs = torch::nonzero(scores_mask).view(-1);
+        selected = original_idxs.index_select(0, selected);
+    }
+
+    return std::make_pair(selected, src_box_scores.index_select(0, selected));
+}

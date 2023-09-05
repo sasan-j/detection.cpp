@@ -7,16 +7,25 @@
 #include "pillar_vfe.h"
 #include "pointpillar_scatter.h"
 #include "backbone2d.h"
-#include "anchor_head_single.h"
-
+#include "anchor_head.h"
 
 // Create a struct to contain parameters
-struct ModelConfig {
-  bool single_head;
+struct ModelConfig
+{
+  // Data Config
   std::vector<float> voxel_size;
   std::vector<float> point_cloud_range;
   int max_points_voxel;
   int max_num_voxels;
+
+  // Backbone 2d Config
+  std::vector<int32_t> backbone_layer_nums;
+  std::vector<int32_t> backbone_layer_strides;
+  std::vector<int32_t> backbone_num_filters;
+  std::vector<int32_t> backbone_upsample_strides;
+  std::vector<int32_t> backbone_num_upsample_filters;
+
+  AnchorHeadConfig anchor_head_config;
 };
 
 namespace pointpillars
@@ -25,32 +34,19 @@ namespace pointpillars
   struct PointPillars : public torch::nn::Module
   {
 
-
     // parameters: voxel_size, point_cloud_range, max_points_voxel, max_num_voxels
     PointPillars(ModelConfig config)
-    //std::vector<float> voxel_size, std::vector<float> point_cloud_range, int max_points_voxel, int max_num_voxels, torch::Tensor grid_size
     {
-
       at::Tensor point_cloud_range = torch::tensor(config.point_cloud_range, torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU));
       at::Tensor voxel_size = torch::tensor(config.voxel_size, torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU));
       torch::Tensor grid_size = (point_cloud_range.slice(0, 3, 6) - point_cloud_range.slice(0, 0, 3)) / voxel_size;
       grid_size = grid_size.round().to(torch::kLong).reshape({-1});
 
-
-
       // Construct and register two Linear submodules.
 
       std::vector<int32_t> num_filters = {64};
 
-      // Backbone Settings
-      std::vector<int32_t> LAYER_NUMS = {3, 5, 5};
-      std::vector<int32_t> LAYER_STRIDES = {2, 2, 2};
-      std::vector<int32_t> NUM_FILTERS = {64, 128, 256};
-      std::vector<int32_t> UPSAMPLE_STRIDES = {1, 2, 4};
-      std::vector<int32_t> NUM_UPSAMPLE_FILTERS = {128, 128, 128};
-
       // CLASS_AGNOSTIC: False
-
 
       // PillarVFE
       vfe = PillarVFE(num_filters, true, false, true, config.voxel_size, config.point_cloud_range, 4);
@@ -58,9 +54,9 @@ namespace pointpillars
       register_module("vfe", vfe);
       register_module("map_to_bev", pp_scatter);
       // not so sure about the first parameter (num_channels)
-      backbone2d = BaseBEVBackbone(num_filters[0], LAYER_NUMS, LAYER_STRIDES, NUM_FILTERS, UPSAMPLE_STRIDES, NUM_UPSAMPLE_FILTERS);
+      backbone2d = BaseBEVBackbone(num_filters[0], config.backbone_layer_nums, config.backbone_layer_strides, config.backbone_num_filters, config.backbone_upsample_strides, config.backbone_num_upsample_filters);
       register_module("backbone_2d", backbone2d);
-      anchor_head = AnchorHeadSingle(NUM_DIR_BINS, USE_DIRECTION_CLASSIFIER, 384, NUM_CLASS, CLASS_NAMES, grid_size, config.point_cloud_range, DIR_OFFSET, DIR_LIMIT_OFFSET, true);
+      anchor_head = AnchorHeadSingle(config.anchor_head_config, config.point_cloud_range, grid_size, 384);
       register_module("dense_head", anchor_head);
 
       std::cout << "Backend2d" << '\n';
@@ -168,13 +164,13 @@ namespace pointpillars
     //         NMS_PRE_MAXSIZE: 4096
     //         NMS_POST_MAXSIZE: 500
 
-struct PostProcessingConfig {
-    std::vector<double> RECALL_THRESH_LIST = {0.3, 0.5, 0.7};
-    double SCORE_THRESH = 0.1;
-    bool OUTPUT_RAW_SCORE = false;
-    std::string EVAL_METRIC = "kitti";
-};
-
+    struct PostProcessingConfig
+    {
+      std::vector<double> RECALL_THRESH_LIST = {0.3, 0.5, 0.7};
+      double SCORE_THRESH = 0.1;
+      bool OUTPUT_RAW_SCORE = false;
+      std::string EVAL_METRIC = "kitti";
+    };
 
     std::vector<BatchMap> postprocess(BatchMap batch_dict)
     {
@@ -189,13 +185,16 @@ struct PostProcessingConfig {
 
         torch::Tensor batch_mask;
 
-        if (batch_dict.find("batch_index") != batch_dict.end()) {
-            // This assumes batch_box_preds is a tensor
-            TORCH_CHECK(batch_dict["batch_box_preds"].dim() == 2, "Expected batch_box_preds to have 2 dimensions");
-            batch_mask = (batch_dict["batch_index"] == index);
-        } else {
-            TORCH_CHECK(batch_dict["batch_box_preds"].dim() == 3, "Expected batch_box_preds to have 3 dimensions");
-            batch_mask = torch::tensor(index);
+        if (batch_dict.find("batch_index") != batch_dict.end())
+        {
+          // This assumes batch_box_preds is a tensor
+          TORCH_CHECK(batch_dict["batch_box_preds"].dim() == 2, "Expected batch_box_preds to have 2 dimensions");
+          batch_mask = (batch_dict["batch_index"] == index);
+        }
+        else
+        {
+          TORCH_CHECK(batch_dict["batch_box_preds"].dim() == 3, "Expected batch_box_preds to have 3 dimensions");
+          batch_mask = torch::tensor(index);
         }
 
         std::cout << "batch_mask: " << batch_mask << std::endl;
@@ -206,7 +205,7 @@ struct PostProcessingConfig {
 
         std::cout << "points orig: " << batch_dict["points"].sizes() << std::endl;
         std::cout << "points preview before: " << batch_dict["points"].index({torch::indexing::Slice(0, 5)}) << std::endl;
-        torch::Tensor points = batch_dict["points"].index_select(0, (batch_dict["points"].select(1, 0) == index).nonzero().squeeze()).slice(1,1);
+        torch::Tensor points = batch_dict["points"].index_select(0, (batch_dict["points"].select(1, 0) == index).nonzero().squeeze()).slice(1, 1);
         std::cout << "points: " << points.sizes() << std::endl;
         std::cout << "points preview after: " << points.index({torch::indexing::Slice(0, 5)}) << std::endl;
 
@@ -214,26 +213,29 @@ struct PostProcessingConfig {
 
         torch::Tensor cls_preds, src_cls_preds, label_preds;
 
-
         std::cout << "batch_dict - batch_cls_preds: " << batch_dict["batch_cls_preds"].sizes() << std::endl;
         std::cout << "batch_mask: " << batch_mask << std::endl;
         cls_preds = batch_dict["batch_cls_preds"].index({batch_mask});
         src_cls_preds = cls_preds;
-        
+
         std::cout << "cls_preds: " << cls_preds.sizes() << std::endl;
         TORCH_CHECK(cls_preds.size(1) == 1 || cls_preds.size(1) == NUM_CLASS, "cls_preds shape mismatch");
 
-        if (!batch_dict["cls_preds_normalized"].item<bool>()) {
-            cls_preds = torch::sigmoid(cls_preds);
+        if (!batch_dict["cls_preds_normalized"].item<bool>())
+        {
+          cls_preds = torch::sigmoid(cls_preds);
         }
 
         std::tie(cls_preds, label_preds) = torch::max(cls_preds, -1);
 
-        if (batch_dict.find("has_class_labels") != batch_dict.end() && batch_dict["has_class_labels"].item<bool>()) {
-            std::string label_key = batch_dict.find("roi_labels") != batch_dict.end() ? "roi_labels" : "batch_pred_labels";
-            label_preds = batch_dict[label_key].index({index});
-        } else {
-            label_preds = label_preds + 1;
+        if (batch_dict.find("has_class_labels") != batch_dict.end() && batch_dict["has_class_labels"].item<bool>())
+        {
+          std::string label_key = batch_dict.find("roi_labels") != batch_dict.end() ? "roi_labels" : "batch_pred_labels";
+          label_preds = batch_dict[label_key].index({index});
+        }
+        else
+        {
+          label_preds = label_preds + 1;
         }
 
         auto nms_result = class_agnostic_nms(
@@ -262,7 +264,6 @@ struct PostProcessingConfig {
       }
       return pred_dicts;
     }
-
 
     // USE_DIRECTION_CLASSIFIER: True
     // DIR_OFFSET: 0.78539

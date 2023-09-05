@@ -54,25 +54,82 @@ BatchMap fake_collate(BatchMap batch_dict){
 int main()
 {
 
+TargetAssignerConfig target_assigner_conf_single = TargetAssignerConfig();
+
+
+// For Multi - NuScenes
+std::vector<AnchorGeneratorConfig> anchor_configs_multi = {
+    {"car", {{4.63, 1.97, 1.74}}, {0, 1.57}, {-0.95}, false, 4, 0.6, 0.45},
+    {"truck", {{6.93, 2.51, 2.84}}, {0, 1.57}, {-0.6}, false, 4, 0.55, 0.4},
+    {"construction_vehicle", {{6.37, 2.85, 3.19}}, {0, 1.57}, {-0.225}, false, 4, 0.5, 0.35},
+    {"bus", {{10.5, 2.94, 3.47}}, {0, 1.57}, {-0.085}, false, 4, 0.55, 0.4},
+    {"trailer", {{12.29, 2.90, 3.87}}, {0, 1.57}, {0.115}, false, 4, 0.5, 0.35},
+    {"barrier", {{0.50, 2.53, 0.98}}, {0, 1.57}, {-1.33}, false, 4, 0.55, 0.4},
+    {"motorcycle", {{2.11, 0.77, 1.47}}, {0, 1.57}, {-1.085}, false, 4, 0.5, 0.3},
+    {"bicycle", {{1.70, 0.60, 1.28}}, {0, 1.57}, {-1.18}, false, 4, 0.5, 0.35},
+    {"pedestrian", {{0.73, 0.67, 1.77}}, {0, 1.57}, {-0.935}, false, 4, 0.6, 0.4},
+    {"traffic_cone", {{0.41, 0.41, 1.07}}, {0, 1.57}, {-1.285}, false, 4, 0.6, 0.4}
+};
+
+// For Single - Kitti
+std::vector<AnchorGeneratorConfig> anchor_configs_single = {
+    {"Car", {{3.9, 1.6, 1.56}}, {0, 1.57}, {-1.78}, false, 2, 0.6, 0.45},
+    {"Pedestrian", {{0.8, 0.6, 1.73}}, {0, 1.57}, {-0.6}, false, 2, 0.5, 0.35},
+    {"Cyclist", {{1.76, 0.6, 1.73}}, {0, 1.57}, {-0.6}, false, 2, 0.5, 0.35}
+};
+
+
+
+AnchorHeadConfig pp_single_head = {
+  2, // num_dir_bins;
+  true, // use_direction_classifier;
+  0.78539, // dir_offset;
+  0.0, // dir_limit_offset;
+  target_assigner_conf_single, // target_assigner_config
+  anchor_configs_single // anchor_generator_configs
+};
+
+TargetAssignerConfig target_assigner_conf_multi = TargetAssignerConfig();
+target_assigner_conf_multi.box_coder_code_size = 9;
+target_assigner_conf_multi.box_coder_encode_angle_by_sincos = true;
+
+AnchorHeadConfig pp_multi_head = {
+  2, // num_dir_bins;
+  true, // use_direction_classifier;
+  0.78539, // dir_offset;
+  0.0, // dir_limit_offset;
+  target_assigner_conf_multi, // target_assigner_config
+  anchor_configs_multi // anchor_generator_configs
+};
+
 // PointPillar Single Head
 ModelConfig model_config = {
-    true, // single_head
     {0.16, 0.16, 4.0}, // voxel_size
     {-39.68, -39.68,  -3.  ,  39.68,  39.68,   1.}, // point_cloud_range
     32, // max_points_voxel
     40000, // max_num_voxels
+    {3, 5, 5}, // backbone_layer_nums
+    {2, 2, 2}, // backbone_layer_strides
+    {64, 128, 256}, // backbone_num_filters
+    {1, 2, 4}, // backbone_upsample_strides
+    {128, 128, 128}, // backbone_num_upsample_filters
+    pp_single_head // anchor_head_config
 };
 
 // PointPillar Multi Head
 // ModelConfig model_config = {
-//     false, // single_head
-//     {0.16, 0.16, 4.0}, // voxel_size
-//     {-39.68, -39.68,  -3.  ,  39.68,  39.68,   1.}, // point_cloud_range
-//     32, // max_points_voxel
+//     {0.2, 0.2, 8.0}, // voxel_size
+//     {-51.2, -51.2, -5.0, 51.2, 51.2, 3.0}, // point_cloud_range
+//     20, // max_points_voxel
 //     40000, // max_num_voxels
-//     {496, 496, 1} // grid_size
+//     {496, 496, 1}, // grid_size
+//     {3, 5, 5}, // backbone_layer_nums
+//     {2, 2, 2}, // backbone_layer_strides
+//     {64, 128, 256}, // backbone_num_filters
+//     {0.5, 1.0, 2.0}, // backbone_upsample_strides
+//     {128, 128, 128}, // backbone_num_upsample_filters
+//     pp_multi_head // anchor_head_config
 // };
-
 
   // torch::Tensor dummy_pcd = torch::rand({65536, 4});
   // std::string file_path = "rc_scaled.bin";

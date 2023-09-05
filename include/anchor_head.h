@@ -49,8 +49,7 @@ std::pair<std::vector<torch::Tensor>, torch::Tensor> generate_anchors(
 
     AnchorGenerator anchor_generator = AnchorGenerator(
         point_cloud_range,
-        anchor_generator_configs
-    );
+        anchor_generator_configs);
 
     // From Yaml Config
     std::vector<int> feature_map_stride = {2, 2, 2};

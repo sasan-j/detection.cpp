@@ -13,9 +13,9 @@ class BaseBEVBackboneImpl : public torch::nn::Module
 {
 public:
     BaseBEVBackboneImpl(int input_channels, std::vector<int> layer_nums, std::vector<int> layer_strides, std::vector<int> num_filters,
-                        std::vector<int> upsample_strides, std::vector<int> num_upsample_filters)
-            : layer_nums(layer_nums), layer_strides(layer_strides), num_filters(num_filters),
-              upsample_strides(upsample_strides), num_upsample_filters(num_upsample_filters)
+                        std::vector<float> upsample_strides, std::vector<int> num_upsample_filters)
+        : layer_nums(layer_nums), layer_strides(layer_strides), num_filters(num_filters),
+          upsample_strides(upsample_strides), num_upsample_filters(num_upsample_filters)
     {
         std::cout << layer_nums.size() << layer_strides.size() << num_filters.size() << std::endl;
         assert(layer_nums.size() == layer_strides.size() && layer_strides.size() == num_filters.size());
@@ -53,8 +53,8 @@ public:
 
             if (upsample_strides.size() > 0)
             {
-                int stride = upsample_strides[idx];
-                if (stride > 1 || (stride == 1 && ~this->USE_CONV_FOR_NO_STRIDE))
+                float stride = upsample_strides[idx];
+                if (stride > 1 || (stride == 1. && ~this->USE_CONV_FOR_NO_STRIDE))
                 {
                     auto deblock_layers = torch::nn::Sequential(
                         torch::nn::ConvTranspose2d(torch::nn::ConvTranspose2dOptions(num_filters[idx], num_upsample_filters[idx], upsample_strides[idx]).stride(upsample_strides[idx]).bias(false)),
@@ -71,13 +71,12 @@ public:
                 }
                 else
                 {
+                    stride = static_cast<int>(round(1.0 / stride));
                     auto deblock_layers = torch::nn::Sequential(
                         torch::nn::Conv2d(torch::nn::Conv2dOptions(num_filters[idx], num_upsample_filters[idx], stride).stride(stride).bias(false)),
                         torch::nn::BatchNorm2d(torch::nn::BatchNorm2dOptions(num_upsample_filters[idx]).eps(1e-3).momentum(0.01)),
                         torch::nn::ReLU());
-                    stride = static_cast<int>(round(1.0 / stride));
                     // register_module("deblocks_" + std::to_string(idx), deblock_layers);
-
 
                     auto named_params = deblock_layers->named_parameters();
                     for (auto iter = named_params.begin(); iter != named_params.end(); ++iter)
@@ -94,9 +93,9 @@ public:
         if (upsample_strides.size() > num_levels)
         {
             auto deblock_layers = torch::nn::Sequential(
-                                                                         torch::nn::ConvTranspose2d(torch::nn::ConvTranspose2dOptions(c_in, c_in, upsample_strides.back()).stride(upsample_strides.back()).bias(false)),
-                                                                         torch::nn::BatchNorm2d(torch::nn::BatchNorm2dOptions(c_in).eps(1e-3).momentum(0.01)),
-                                                                         torch::nn::ReLU());
+                torch::nn::ConvTranspose2d(torch::nn::ConvTranspose2dOptions(c_in, c_in, upsample_strides.back()).stride(upsample_strides.back()).bias(false)),
+                torch::nn::BatchNorm2d(torch::nn::BatchNorm2dOptions(c_in).eps(1e-3).momentum(0.01)),
+                torch::nn::ReLU());
             // register_module("deblock_last", deblock_layers);
             this->deblocks->push_back(deblock_layers);
         }
@@ -115,7 +114,6 @@ public:
         {
             std::cout << iter->key() << std::endl;
         }
-        
     }
 
     BatchMap forward(BatchMap data_dict)
@@ -160,7 +158,7 @@ public:
 
         if (this->deblocks->size() > this->blocks->size())
         {
-            x = this->deblocks[this->deblocks->size()-1]->as<torch::nn::Sequential>()->forward(x);
+            x = this->deblocks[this->deblocks->size() - 1]->as<torch::nn::Sequential>()->forward(x);
         }
 
         data_dict["spatial_features_2d"] = x;
@@ -173,7 +171,7 @@ private:
     std::vector<int> layer_nums;
     std::vector<int> layer_strides;
     std::vector<int> num_filters;
-    std::vector<int> upsample_strides;
+    std::vector<float> upsample_strides;
     std::vector<int> num_upsample_filters;
     torch::nn::ModuleList blocks{nullptr};
     torch::nn::ModuleList deblocks{nullptr};

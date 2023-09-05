@@ -103,33 +103,32 @@ AnchorHeadConfig pp_multi_head = {
 };
 
 // PointPillar Single Head
+// ModelConfig model_config = {
+//     {0.16, 0.16, 4.0}, // voxel_size
+//     {-39.68, -39.68,  -3.  ,  39.68,  39.68,   1.}, // point_cloud_range
+//     32, // max_points_voxel
+//     40000, // max_num_voxels
+//     {3, 5, 5}, // backbone_layer_nums
+//     {2, 2, 2}, // backbone_layer_strides
+//     {64, 128, 256}, // backbone_num_filters
+//     {1, 2, 4}, // backbone_upsample_strides
+//     {128, 128, 128}, // backbone_num_upsample_filters
+//     pp_single_head // anchor_head_config
+// };
+
+// PointPillar Multi Head
 ModelConfig model_config = {
-    {0.16, 0.16, 4.0}, // voxel_size
-    {-39.68, -39.68,  -3.  ,  39.68,  39.68,   1.}, // point_cloud_range
-    32, // max_points_voxel
+    {0.2, 0.2, 8.0}, // voxel_size
+    {-51.2, -51.2, -5.0, 51.2, 51.2, 3.0}, // point_cloud_range
+    20, // max_points_voxel
     40000, // max_num_voxels
     {3, 5, 5}, // backbone_layer_nums
     {2, 2, 2}, // backbone_layer_strides
     {64, 128, 256}, // backbone_num_filters
-    {1, 2, 4}, // backbone_upsample_strides
+    {0.5, 1.0, 2.0}, // backbone_upsample_strides
     {128, 128, 128}, // backbone_num_upsample_filters
-    pp_single_head // anchor_head_config
+    pp_multi_head // anchor_head_config
 };
-
-// PointPillar Multi Head
-// ModelConfig model_config = {
-//     {0.2, 0.2, 8.0}, // voxel_size
-//     {-51.2, -51.2, -5.0, 51.2, 51.2, 3.0}, // point_cloud_range
-//     20, // max_points_voxel
-//     40000, // max_num_voxels
-//     {496, 496, 1}, // grid_size
-//     {3, 5, 5}, // backbone_layer_nums
-//     {2, 2, 2}, // backbone_layer_strides
-//     {64, 128, 256}, // backbone_num_filters
-//     {0.5, 1.0, 2.0}, // backbone_upsample_strides
-//     {128, 128, 128}, // backbone_num_upsample_filters
-//     pp_multi_head // anchor_head_config
-// };
 
   // torch::Tensor dummy_pcd = torch::rand({65536, 4});
   // std::string file_path = "rc_scaled.bin";
@@ -184,7 +183,7 @@ ModelConfig model_config = {
 
   // Verifications to see if we're getting the right shapes
   assert(pcd.sizes() == torch::IntArrayRef({65536, 4}));
-  assert(torch::equal(grid_size, torch::tensor({496, 496, 1}, torch::TensorOptions().dtype(torch::kLong).device(torch::kCPU))));
+  // assert(torch::equal(grid_size, torch::tensor({496, 496, 1}, torch::TensorOptions().dtype(torch::kLong).device(torch::kCPU))));
   assert(grid_size.sizes() == torch::IntArrayRef({3}));
   // assert(voxels.sizes() == torch::IntArrayRef({6941, max_points_voxel, pcd.size(1)}));
   // assert(coors.sizes() == torch::IntArrayRef({6941, 3}));

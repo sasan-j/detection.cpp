@@ -22,7 +22,7 @@ struct ModelConfig
   std::vector<int32_t> backbone_layer_nums;
   std::vector<int32_t> backbone_layer_strides;
   std::vector<int32_t> backbone_num_filters;
-  std::vector<int32_t> backbone_upsample_strides;
+  std::vector<float> backbone_upsample_strides;
   std::vector<int32_t> backbone_num_upsample_filters;
 
   AnchorHeadConfig anchor_head_config;

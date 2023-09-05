@@ -10,8 +10,14 @@
 #include "anchor_head_single.h"
 
 
-
-
+// Create a struct to contain parameters
+struct ModelConfig {
+  bool single_head;
+  std::vector<float> voxel_size;
+  std::vector<float> point_cloud_range;
+  int max_points_voxel;
+  int max_num_voxels;
+};
 
 namespace pointpillars
 {
@@ -21,8 +27,17 @@ namespace pointpillars
 
 
     // parameters: voxel_size, point_cloud_range, max_points_voxel, max_num_voxels
-    PointPillars(std::vector<float> voxel_size, std::vector<float> point_cloud_range, int max_points_voxel, int max_num_voxels, torch::Tensor grid_size)
+    PointPillars(ModelConfig config)
+    //std::vector<float> voxel_size, std::vector<float> point_cloud_range, int max_points_voxel, int max_num_voxels, torch::Tensor grid_size
     {
+
+      at::Tensor point_cloud_range = torch::tensor(config.point_cloud_range, torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU));
+      at::Tensor voxel_size = torch::tensor(config.voxel_size, torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU));
+      torch::Tensor grid_size = (point_cloud_range.slice(0, 3, 6) - point_cloud_range.slice(0, 0, 3)) / voxel_size;
+      grid_size = grid_size.round().to(torch::kLong).reshape({-1});
+
+
+
       // Construct and register two Linear submodules.
 
       std::vector<int32_t> num_filters = {64};
@@ -38,14 +53,14 @@ namespace pointpillars
 
 
       // PillarVFE
-      vfe = PillarVFE(num_filters, true, false, true, voxel_size, point_cloud_range, 4);
+      vfe = PillarVFE(num_filters, true, false, true, config.voxel_size, config.point_cloud_range, 4);
       pp_scatter = PointPillarScatter(64, grid_size.index({0}).item<int64_t>(), grid_size.index({1}).item<int64_t>(), grid_size.index({2}).item<int64_t>());
       register_module("vfe", vfe);
       register_module("map_to_bev", pp_scatter);
       // not so sure about the first parameter (num_channels)
       backbone2d = BaseBEVBackbone(num_filters[0], LAYER_NUMS, LAYER_STRIDES, NUM_FILTERS, UPSAMPLE_STRIDES, NUM_UPSAMPLE_FILTERS);
       register_module("backbone_2d", backbone2d);
-      anchor_head = AnchorHeadSingle(NUM_DIR_BINS, USE_DIRECTION_CLASSIFIER, 384, NUM_CLASS, CLASS_NAMES, grid_size, point_cloud_range, DIR_OFFSET, DIR_LIMIT_OFFSET, true);
+      anchor_head = AnchorHeadSingle(NUM_DIR_BINS, USE_DIRECTION_CLASSIFIER, 384, NUM_CLASS, CLASS_NAMES, grid_size, config.point_cloud_range, DIR_OFFSET, DIR_LIMIT_OFFSET, true);
       register_module("dense_head", anchor_head);
 
       std::cout << "Backend2d" << '\n';
@@ -249,18 +264,18 @@ struct PostProcessingConfig {
     }
 
 
-      // USE_DIRECTION_CLASSIFIER: True
-      // DIR_OFFSET: 0.78539
-      // DIR_LIMIT_OFFSET: 0.0
-      // NUM_DIR_BINS: 2
-      // Anchor Head Settings
-      bool USE_DIRECTION_CLASSIFIER = true;
-      bool USE_MULTIHEAD = false;
-      int NUM_CLASS = 3;
-      int NUM_DIR_BINS = 2;
-      float DIR_OFFSET = 0.78539;
-      float DIR_LIMIT_OFFSET = 0.0;
-      std::vector<std::string> CLASS_NAMES = {"Car", "Pedestrian", "Cyclist"};
+    // USE_DIRECTION_CLASSIFIER: True
+    // DIR_OFFSET: 0.78539
+    // DIR_LIMIT_OFFSET: 0.0
+    // NUM_DIR_BINS: 2
+    // Anchor Head Settings
+    bool USE_DIRECTION_CLASSIFIER = true;
+    bool USE_MULTIHEAD = false;
+    int NUM_CLASS = 3;
+    int NUM_DIR_BINS = 2;
+    float DIR_OFFSET = 0.78539;
+    float DIR_LIMIT_OFFSET = 0.0;
+    std::vector<std::string> CLASS_NAMES = {"Car", "Pedestrian", "Cyclist"};
 
     PillarVFE vfe{nullptr};
     PointPillarScatter pp_scatter{nullptr};

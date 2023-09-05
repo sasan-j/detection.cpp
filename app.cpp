@@ -50,25 +50,48 @@ BatchMap fake_collate(BatchMap batch_dict){
 }
 
 
+
 int main()
 {
+
+// PointPillar Single Head
+ModelConfig model_config = {
+    true, // single_head
+    {0.16, 0.16, 4.0}, // voxel_size
+    {-39.68, -39.68,  -3.  ,  39.68,  39.68,   1.}, // point_cloud_range
+    32, // max_points_voxel
+    40000, // max_num_voxels
+};
+
+// PointPillar Multi Head
+// ModelConfig model_config = {
+//     false, // single_head
+//     {0.16, 0.16, 4.0}, // voxel_size
+//     {-39.68, -39.68,  -3.  ,  39.68,  39.68,   1.}, // point_cloud_range
+//     32, // max_points_voxel
+//     40000, // max_num_voxels
+//     {496, 496, 1} // grid_size
+// };
+
+
   // torch::Tensor dummy_pcd = torch::rand({65536, 4});
   // std::string file_path = "rc_scaled.bin";
-  std::string file_path = "1687261555.576275000.bin";
+  // std::string file_path = "1687261555.576275000.bin"; 
+  std::string file_path = "1687261608.576809000.bin"; 
   auto pcd = torch::from_file(file_path, false, 65536 * 4, torch::kFloat32);
   pcd = pcd.view({-1, 4});
 
   std::cout << "points" << pcd.sizes() << '\n';
 
-  pcd.select(1, 2) -= 1.6;
-  // pcd.select(1, 2).clamp_(-3, 1);
+  pcd.select(1, 2) -= 1.75;
+  pcd.select(1, 2).clamp_(-3, 1);
 
   std::cout << pcd.index({torch::indexing::Slice(0, 5), torch::indexing::Slice()}) << std::endl;
   std::cout << pcd.index({torch::indexing::Slice(-5), torch::indexing::Slice()}) << std::endl;
 
   // Call Voxelization on CPU
-  at::Tensor voxel_size = torch::tensor({0.16, 0.16, 4.0}, torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU));
-  at::Tensor point_cloud_range = torch::tensor({-39.68, -39.68,  -3.  ,  39.68,  39.68,   1.}, torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU));
+  at::Tensor voxel_size = torch::tensor(model_config.voxel_size, torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU));
+  at::Tensor point_cloud_range = torch::tensor(model_config.point_cloud_range, torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU));
 
   torch::Tensor grid_size = (point_cloud_range.slice(0, 3, 6) - point_cloud_range.slice(0, 0, 3)) / voxel_size;
   grid_size = grid_size.round().to(torch::kLong).reshape({-1});
@@ -77,16 +100,13 @@ int main()
   auto voxel_size_vect = std::vector(voxel_size.data_ptr<float>(), voxel_size.data_ptr<float>() + voxel_size.numel());
   auto point_cloud_range_vect = std::vector(point_cloud_range.data_ptr<float>(), point_cloud_range.data_ptr<float>() + point_cloud_range.numel());
 
-  int max_points_voxel = 32;
-  int max_num_voxels = 40000;
-
-  at::Tensor voxels = torch::zeros({max_num_voxels, max_points_voxel, pcd.size(1)}, torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU));
-  at::Tensor coors = torch::zeros({max_num_voxels, 3}, torch::TensorOptions().dtype(torch::kInt32).device(torch::kCPU));
-  at::Tensor num_points_per_voxel = torch::zeros({max_num_voxels}, torch::TensorOptions().dtype(torch::kInt32).device(torch::kCPU));
+  at::Tensor voxels = torch::zeros({model_config.max_num_voxels, model_config.max_points_voxel, pcd.size(1)}, torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU));
+  at::Tensor coors = torch::zeros({model_config.max_num_voxels, 3}, torch::TensorOptions().dtype(torch::kInt32).device(torch::kCPU));
+  at::Tensor num_points_per_voxel = torch::zeros({model_config.max_num_voxels}, torch::TensorOptions().dtype(torch::kInt32).device(torch::kCPU));
 
   std::cout << "voxels before voxelization" << voxels.sizes() << '\n';
 
-  auto vox_out = voxelization::hard_voxelize(pcd, voxels, coors, num_points_per_voxel, voxel_size_vect, point_cloud_range_vect, max_points_voxel, max_num_voxels, 3, true);
+  auto vox_out = voxelization::hard_voxelize(pcd, voxels, coors, num_points_per_voxel, voxel_size_vect, point_cloud_range_vect, model_config.max_points_voxel, model_config.max_num_voxels, 3, true);
   voxels = voxels.index({torch::indexing::Slice(0, vox_out)});
   coors = coors.index({torch::indexing::Slice(0, vox_out)});//.flip({-1});
   num_points_per_voxel = num_points_per_voxel.index({torch::indexing::Slice(0, vox_out)});
@@ -131,7 +151,7 @@ int main()
   batch_dict = fake_collate(batch_dict);
   
   // PointPillar
-  pointpillars::PointPillars model(voxel_size_vect, point_cloud_range_vect, max_points_voxel, max_num_voxels, grid_size);
+  pointpillars::PointPillars model(model_config);
   std::cout << "Model was instantiated" << '\n';
 
   // Execute the model and turn its output into a tensor.

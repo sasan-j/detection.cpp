@@ -1,0 +1,53 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "configure",
+            "type": "shell",
+            "command": "cd build && cmake -DCMAKE_PREFIX_PATH=/home/sasan/dev/uni/detection.cpp/libtorch  ..",
+        },
+        {
+            "label": "configure debug",
+            "type": "shell",
+            "command": "cd debug && cmake -DCMAKE_PREFIX_PATH=/home/sasan/dev/uni/detection.cpp/libtorch  ..",
+        },
+        {
+            "label": "build-debug",
+            "type": "shell",
+            "command": "cmake --build debug --config Debug",
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "build-debug-clean",
+            "type": "shell",
+            "command": "cmake --build debug --config Debug --clean-first",
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "build-release",
+            "type": "shell",
+            "command": "cmake --build build --config Release",
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
+}

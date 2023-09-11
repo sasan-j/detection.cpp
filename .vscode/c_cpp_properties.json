@@ -1,0 +1,51 @@
+{
+    "env": {
+        "myDefaultIncludePath": [
+            "${workspaceFolder}",
+            "${workspaceFolder}/include",
+            "${workspaceFolder}/libtorch/include",
+            "${workspaceFolder}/libtorch/include/**",
+            "/usr/local/cuda/include"
+        ],
+        "myCompilerPath": "/home/linuxbrew/.linuxbrew/bin/g++-13"
+        // "sourceFileMap": {
+        //     "${workspaceFolder}": "${workspaceFolder}"
+        // }
+    },
+    "configurations": [
+        {
+            "name": "Mac",
+            "intelliSenseMode": "macos-clang-x64",
+            "includePath": [
+                "${myDefaultIncludePath}",
+                "${workspaceFolder}/libtorch/include/**"
+            ],
+            "defines": [
+                "FOO",
+                "BAR=100"
+            ],
+            "compilerPath": "/home/linuxbrew/.linuxbrew/bin/g++-13",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "browse": {
+                "path": [
+                    "${workspaceFolder}"
+                ],
+                "limitSymbolsToIncludedHeaders": false,
+                "databaseFilename": ""
+            }
+        },
+        {
+            "name": "Linux",
+            "includePath": [
+                "${myDefaultIncludePath}",
+                "${workspaceFolder}/libtorch/include/**"
+            ],
+            "compilerPath": "/home/linuxbrew/.linuxbrew/bin/g++-13",
+            "cStandard": "gnu17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "linux-gcc-x64"
+        }
+    ],
+    "version": 4
+}

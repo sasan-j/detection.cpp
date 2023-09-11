@@ -154,3 +154,17 @@ public:
 private:
     bool encode_angle_by_sincos;
 };
+
+
+// Function to split a string by a delimiter and return a vector of substrings
+std::vector<std::string> split_string(const std::string& input, char delimiter) {
+    std::vector<std::string> tokens;
+    std::string token;
+    std::istringstream token_stream(input);
+
+    while (std::getline(token_stream, token, delimiter)) {
+        tokens.push_back(token);
+    }
+
+    return tokens;
+}

@@ -8,25 +8,9 @@
 #include "pointpillar_scatter.h"
 #include "backbone2d.h"
 #include "anchor_head.h"
-
-// Create a struct to contain parameters
-struct ModelConfig
-{
-  // Data Config
-  std::vector<float> voxel_size;
-  std::vector<float> point_cloud_range;
-  int max_points_voxel;
-  int max_num_voxels;
-
-  // Backbone 2d Config
-  std::vector<int32_t> backbone_layer_nums;
-  std::vector<int32_t> backbone_layer_strides;
-  std::vector<int32_t> backbone_num_filters;
-  std::vector<float> backbone_upsample_strides;
-  std::vector<int32_t> backbone_num_upsample_filters;
-
-  AnchorHeadConfig anchor_head_config;
-};
+#include "anchor_head_single.h"
+#include "anchor_head_multi.h"
+#include "model.h"
 
 namespace pointpillars
 {
@@ -54,7 +38,7 @@ namespace pointpillars
       register_module("vfe", vfe);
       register_module("map_to_bev", pp_scatter);
       // not so sure about the first parameter (num_channels)
-      backbone2d = BaseBEVBackbone(num_filters[0], config.backbone_layer_nums, config.backbone_layer_strides, config.backbone_num_filters, config.backbone_upsample_strides, config.backbone_num_upsample_filters);
+      backbone2d = BaseBEVBackbone(config, num_filters[0]);
       register_module("backbone_2d", backbone2d);
       anchor_head = AnchorHeadSingle(config.anchor_head_config, config.point_cloud_range, grid_size, 384);
       register_module("dense_head", anchor_head);

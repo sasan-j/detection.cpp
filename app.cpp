@@ -99,7 +99,11 @@ AnchorHeadConfig pp_multi_head = {
   0.78539, // dir_offset;
   0.0, // dir_limit_offset;
   target_assigner_conf_multi, // target_assigner_config
-  anchor_configs_multi // anchor_generator_configs
+  anchor_configs_multi, // anchor_generator_configs
+  SeparateRegConfig(), // separate_reg_config
+  true, // use_multihead
+  true, // separate_multihead
+  64, // shared_conv_num_filter
 };
 
 // PointPillar Single Head
@@ -133,7 +137,7 @@ ModelConfig model_config = {
   // torch::Tensor dummy_pcd = torch::rand({65536, 4});
   // std::string file_path = "rc_scaled.bin";
   // std::string file_path = "1687261555.576275000.bin"; 
-  std::string file_path = "1687261608.576809000.bin"; 
+  std::string file_path = "1687261608.576809000.bin";
   auto pcd = torch::from_file(file_path, false, 65536 * 4, torch::kFloat32);
   pcd = pcd.view({-1, 4});
 

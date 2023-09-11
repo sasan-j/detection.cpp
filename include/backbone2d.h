@@ -1,5 +1,7 @@
-#include <torch/torch.h>
+#pragma once
 
+#include <torch/torch.h>
+#include "model.h"
 #include "utils.h"
 
 // NAME: BaseBEVBackbone
@@ -12,11 +14,15 @@
 class BaseBEVBackboneImpl : public torch::nn::Module
 {
 public:
-    BaseBEVBackboneImpl(int input_channels, std::vector<int> layer_nums, std::vector<int> layer_strides, std::vector<int> num_filters,
-                        std::vector<float> upsample_strides, std::vector<int> num_upsample_filters)
-        : layer_nums(layer_nums), layer_strides(layer_strides), num_filters(num_filters),
-          upsample_strides(upsample_strides), num_upsample_filters(num_upsample_filters)
+    BaseBEVBackboneImpl(ModelConfig model_config, int input_channels)
     {
+        this->model_config = model_config;
+        this->layer_nums = model_config.backbone_layer_nums;
+        this->layer_strides = model_config.backbone_layer_strides;
+        this->num_filters = model_config.backbone_num_filters;
+        this->upsample_strides = model_config.backbone_upsample_strides;
+        this->num_upsample_filters = model_config.backbone_num_upsample_filters;
+
         std::cout << layer_nums.size() << layer_strides.size() << num_filters.size() << std::endl;
         assert(layer_nums.size() == layer_strides.size() && layer_strides.size() == num_filters.size());
         assert(upsample_strides.size() == num_upsample_filters.size());
@@ -166,7 +172,59 @@ public:
         return data_dict;
     }
 
+    BatchMap forward_p(BatchMap data_dict)
+    {
+        torch::Tensor spatial_features = data_dict["spatial_features"];
+        std::vector<torch::Tensor> ups;
+        std::unordered_map<std::string, torch::Tensor> ret_dict;
+        torch::Tensor x = spatial_features;
+
+        // for (auto layer : this->blocks)
+        // {
+        //     x = layer->forward(x);
+        //     ups.push_back(x);
+        // }
+
+        for (size_t i = 0; i < this->blocks->size(); ++i)
+        {
+            x = blocks[i]->as<torch::nn::Sequential>()->forward(x);
+
+            std::cout << "spatial_features: size(2) and sizes()" << spatial_features.size(2) << spatial_features.sizes() << std::endl;
+            int stride = static_cast<int>(spatial_features.size(2) / x.size(2));
+            ret_dict["spatial_features_" + std::to_string(stride) + "x"] = x;
+
+            if (this->deblocks->size() > 0)
+            {
+                ups.push_back(this->deblocks[i]->as<torch::nn::Sequential>()->forward(x));
+            }
+            else
+            {
+                ups.push_back(x);
+            }
+        }
+
+        if (ups.size() > 1)
+        {
+            x = torch::cat(ups, 1);
+        }
+        else if (ups.size() == 1)
+        {
+            x = ups[0];
+        }
+
+        if (this->deblocks->size() > this->blocks->size())
+        {
+            x = this->deblocks[this->deblocks->size() - 1]->as<torch::nn::Sequential>()->forward(x);
+        }
+
+        data_dict["spatial_features_2d"] = x;
+
+        return data_dict;
+    }
+
+
 private:
+    ModelConfig model_config;
     bool USE_CONV_FOR_NO_STRIDE = false;
     std::vector<int> layer_nums;
     std::vector<int> layer_strides;

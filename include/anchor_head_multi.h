@@ -255,7 +255,7 @@ public:
         // Multihead Constructor
         if (config.shared_conv_num_filter != 0)
         {
-            this->shared_conv = std::make_unique<torch::nn::Sequential>(
+            this->shared_conv = torch::nn::Sequential(
                 torch::nn::Conv2d(torch::nn::Conv2dOptions(input_channels, config.shared_conv_num_filter, 3).stride(1).padding(1).bias(false)),
                 torch::nn::BatchNorm2d(torch::nn::BatchNorm2dOptions(config.shared_conv_num_filter).eps(1e-3).momentum(0.01)),
                 torch::nn::ReLU());
@@ -333,20 +333,20 @@ public:
 
     BatchMap forward(BatchMap data_dict) {
         torch::Tensor spatial_features_2d = data_dict["spatial_features_2d"];
-        if (shared_conv) {
+        if (this->config.shared_conv_num_filter != 0){
             spatial_features_2d = shared_conv->forward(spatial_features_2d);
         }
 
-        std::vector<torch::Tensor> ret_dicts;
-        for (const auto& rpn_head : rpn_heads) {
-            ret_dicts.push_back(rpn_head->forward(spatial_features_2d));
+        std::vector<BatchMap> ret_dicts;
+        for (auto rpn_head : rpn_heads) {
+            ret_dicts.push_back(rpn_head.forward(spatial_features_2d));
         }
 
         std::vector<torch::Tensor> cls_preds;
         std::vector<torch::Tensor> box_preds;
         std::vector<torch::Tensor> dir_cls_preds;
 
-        for (const auto& ret_dict : ret_dicts) {
+        for (auto ret_dict : ret_dicts) {
             cls_preds.push_back(ret_dict["cls_preds"]);
             box_preds.push_back(ret_dict["box_preds"]);
             if (config.use_direction_classifier) {
@@ -354,52 +354,53 @@ public:
             }
         }
 
-        torch::Tensor ret;
+        std::unordered_map<std::string, std::vector<torch::Tensor>> ret;
 
         if (config.separate_multihead) {
             ret["cls_preds"] = cls_preds;
             ret["box_preds"] = box_preds;
-            if (model_cfg.get("USE_DIRECTION_CLASSIFIER", false)) {
+            if (config.use_direction_classifier) {
                 ret["dir_cls_preds"] = dir_cls_preds;
             }
-        } else {
-            ret["cls_preds"] = torch::cat(cls_preds, 1);
-            ret["box_preds"] = torch::cat(box_preds, 1);
-            if (model_cfg.get("USE_DIRECTION_CLASSIFIER", false)) {
-                ret["dir_cls_preds"] = torch::cat(dir_cls_preds, 1);
-            }
         }
+        //  else {
+        //     ret["cls_preds"] = torch::cat(cls_preds, 1);
+        //     ret["box_preds"] = torch::cat(box_preds, 1);
+        //     if (config.use_direction_classifier) {
+        //         ret["dir_cls_preds"] = torch::cat(dir_cls_preds, 1);
+        //     }
+        // }
 
-        forward_ret_dict.update(ret);
-
-        std::pair<torch::Tensor, torch::Tensor> result = generate_predicted_boxes(
-            data_dict["batch_size"],
+        std::pair<std::vector<torch::Tensor>, torch::Tensor> result = generate_predicted_boxes(
+            this->config,
+            this->anchors,
+            this->box_coder,
+            data_dict["batch_size"].item<int>(),
             ret["cls_preds"],
             ret["box_preds"],
-            ret.contains("dir_cls_preds") ? ret["dir_cls_preds"] : torch::Tensor()
+            ret["dir_cls_preds"]
         );
-        data_dict["batch_cls_preds"] = result.first;
-        data_dict["batch_box_preds"] = result.second;
-        data_dict["cls_preds_normalized"] = false;
+        // data_dict["batch_cls_preds"] = result.first;
+        // data_dict["batch_box_preds"] = result.second;
+        // data_dict["cls_preds_normalized"] = false;
 
-        if (batch_cls_preds.is_list()) {
-            std::vector<torch::Tensor> multihead_label_mapping;
-            for (size_t idx = 0; idx < batch_cls_preds.size(); ++idx) {
-                multihead_label_mapping.push_back(rpn_heads[idx]->head_label_indices);
-            }
-            data_dict["multihead_label_mapping"] = multihead_label_mapping;
-        }
+        // if (batch_cls_preds.is_list()) {
+        //     std::vector<torch::Tensor> multihead_label_mapping;
+        //     for (size_t idx = 0; idx < batch_cls_preds.size(); ++idx) {
+        //         multihead_label_mapping.push_back(rpn_heads[idx]->head_label_indices);
+        //     }
+        //     data_dict["multihead_label_mapping"] = multihead_label_mapping;
+        // }
         
 
         return data_dict;
     }
 
-
 private:
     AnchorHeadConfig config;
     ModelConfig model_config;
     int num_class;
-    std::unique_ptr<torch::nn::Sequential> shared_conv;
+    torch::nn::Sequential shared_conv;
     std::vector<torch::Tensor> anchors;
     torch::Tensor num_anchors_per_location;
     AxisAlignedTargetAssigner target_assigner;

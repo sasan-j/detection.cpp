@@ -102,7 +102,7 @@ public:
         if (this->predict_boxes_when_training)
         {
             // assuming generate_predicted_boxes is a function defined elsewhere in your code
-            auto [batch_cls_preds, batch_box_preds] = this->generate_predicted_boxes(data_dict["batch_size"].item<int>(), cls_preds, box_preds, dir_cls_preds);
+            auto [batch_cls_preds, batch_box_preds] = generate_predicted_boxes(this->config, this->anchors, this->box_coder, data_dict["batch_size"].item<int>(), cls_preds, box_preds, dir_cls_preds);
             data_dict["batch_cls_preds"] = batch_cls_preds;
             data_dict["batch_box_preds"] = batch_box_preds;
             data_dict["cls_preds_normalized"] = torch::tensor({false});
@@ -116,39 +116,6 @@ public:
         auto targets_dict = this->target_assigner.assign_targets(
             this->anchors, gt_boxes);
         return targets_dict;
-    }
-
-    std::pair<torch::Tensor, torch::Tensor> generate_predicted_boxes(int batch_size, torch::Tensor cls_preds, torch::Tensor box_preds, torch::Tensor dir_cls_preds = torch::Tensor())
-    {
-        std::vector<torch::Tensor> anchors = this->anchors;
-
-        // Only Single Head
-        torch::Tensor anchors_tensor = torch::cat(anchors, -3);
-
-        int num_anchors = anchors_tensor.reshape({-1, anchors_tensor.size(-1)}).size(0);
-        torch::Tensor batch_anchors = anchors_tensor.view({1, -1, anchors_tensor.size(-1)}).repeat({batch_size, 1, 1});
-
-        torch::Tensor batch_cls_preds = cls_preds.view({batch_size, num_anchors, -1}).toType(torch::kFloat);
-        torch::Tensor batch_box_preds = box_preds.view({batch_size, num_anchors, -1});
-        // FAIL -   what():  The size of tensor a (7) must match the size of tensor b (12) at non-singleton dimension 1
-        batch_box_preds = this->box_coder.decode_torch(batch_box_preds, batch_anchors);
-
-        if (dir_cls_preds.defined())
-        {
-            float dir_offset = this->config.dir_offset;
-            float dir_limit_offset = this->config.dir_limit_offset;
-            dir_cls_preds = dir_cls_preds.view({batch_size, num_anchors, -1});
-
-            torch::Tensor dir_labels = std::get<1>(dir_cls_preds.max(-1));
-
-            float period = (2 * M_PI / this->config.num_dir_bins);
-            torch::Tensor dir_rot = limit_period(
-                batch_box_preds.index({torch::indexing::Slice(), torch::indexing::Slice(), 6}) - dir_offset, dir_limit_offset, period);
-
-            batch_box_preds.index_put_({torch::indexing::Slice(), torch::indexing::Slice(), 6}, dir_rot + dir_offset + period * dir_labels.to(batch_box_preds.dtype()));
-        }
-
-        return {batch_cls_preds, batch_box_preds};
     }
 
 private:

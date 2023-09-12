@@ -114,12 +114,12 @@ public:
 
         num_bev_features = c_in;
 
-        std::cout << "NAMED PARAMETERS: " << std::endl;
-        auto named_params = this->named_parameters();
-        for (auto iter = named_params.begin(); iter != named_params.end(); ++iter)
-        {
-            std::cout << iter->key() << std::endl;
-        }
+        // std::cout << "NAMED PARAMETERS: " << std::endl;
+        // auto named_params = this->named_parameters();
+        // for (auto iter = named_params.begin(); iter != named_params.end(); ++iter)
+        // {
+        //     std::cout << iter->key() << std::endl;
+        // }
     }
 
     BatchMap forward(BatchMap data_dict)

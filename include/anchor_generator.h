@@ -58,6 +58,7 @@ public:
 
     std::pair<std::vector<torch::Tensor>, torch::Tensor> generate_anchors(std::vector<torch::Tensor> grid_sizes)
     {
+        std::cout << "grid_size.size(): " << grid_sizes.size() << " num_of_anchor_sets: " << num_of_anchor_sets << '\n';
         assert(grid_sizes.size() == num_of_anchor_sets);
 
         std::vector<torch::Tensor> all_anchors;

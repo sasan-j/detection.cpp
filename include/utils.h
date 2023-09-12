@@ -14,7 +14,7 @@ class ResidualCoder
 {
 public:
     int code_size;
-    ResidualCoder(int code_size = 7, bool encode_angle_by_sincos = false)
+    ResidualCoder(int code_size = 9, bool encode_angle_by_sincos = true)
         : code_size(code_size), encode_angle_by_sincos(encode_angle_by_sincos)
     {
         if (this->encode_angle_by_sincos)

@@ -99,14 +99,11 @@ public:
             }
         }
 
-        if (this->predict_boxes_when_training)
-        {
-            // assuming generate_predicted_boxes is a function defined elsewhere in your code
-            auto [batch_cls_preds, batch_box_preds] = generate_predicted_boxes(this->config, this->anchors, this->box_coder, data_dict["batch_size"].item<int>(), cls_preds, box_preds, dir_cls_preds);
-            data_dict["batch_cls_preds"] = batch_cls_preds;
-            data_dict["batch_box_preds"] = batch_box_preds;
-            data_dict["cls_preds_normalized"] = torch::tensor({false});
-        }
+        // assuming generate_predicted_boxes is a function defined elsewhere in your code
+        auto [batch_cls_preds, batch_box_preds] = generate_predicted_boxes(this->config, this->anchors, this->box_coder, data_dict["batch_size"].item<int>(), cls_preds, box_preds, dir_cls_preds);
+        data_dict["batch_cls_preds"] = batch_cls_preds;
+        data_dict["batch_box_preds"] = batch_box_preds;
+        data_dict["cls_preds_normalized"] = torch::tensor({false});
 
         return data_dict;
     }
@@ -118,12 +115,11 @@ public:
         return targets_dict;
     }
 
+    int num_class;
 private:
     AnchorHeadConfig config;
-    int num_class;
     std::unordered_map<std::string, torch::Tensor> forward_ret_dict = {};
     std::vector<std::string> class_names;
-    bool predict_boxes_when_training;
     std::vector<torch::Tensor> anchors;
     torch::Tensor num_anchors_per_location;
     int64_t sum_num_anchors_per_location;

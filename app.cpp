@@ -79,15 +79,16 @@ std::vector<AnchorGeneratorConfig> anchor_configs_single = {
 };
 
 
-
-AnchorHeadConfig pp_single_head = {
-  2, // num_dir_bins;
-  true, // use_direction_classifier;
-  0.78539, // dir_offset;
-  0.0, // dir_limit_offset;
-  target_assigner_conf_single, // target_assigner_config
-  anchor_configs_single // anchor_generator_configs
-};
+// Has problems but not needed atm
+// AnchorHeadConfig pp_single_head = {
+//   2, // num_dir_bins;
+//   true, // use_direction_classifier;
+//   0.78539, // dir_offset;
+//   0.0, // dir_limit_offset;
+//   target_assigner_conf_single, // target_assigner_config
+//   anchor_configs_single, // anchor_generator_configs
+//   SeparateRegConfig(),
+// };
 
 TargetAssignerConfig target_assigner_conf_multi = TargetAssignerConfig();
 target_assigner_conf_multi.box_coder_code_size = 9;
@@ -104,6 +105,15 @@ AnchorHeadConfig pp_multi_head = {
   true, // use_multihead
   true, // separate_multihead
   64, // shared_conv_num_filter
+  false, // class_agnostic
+  {
+        {{"car"}},
+        {{"truck", "construction_vehicle"}},
+        {{"bus", "trailer"}},
+        {{"barrier"}},
+        {{"motorcycle", "bicycle"}},
+        {{"pedestrian", "traffic_cone"}},
+    } // rpn_head_config
 };
 
 // PointPillar Single Head

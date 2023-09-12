@@ -25,14 +25,7 @@ struct AnchorHeadConfig
     bool separate_multihead = false;
     int shared_conv_num_filter = 0;
     bool class_agnostic = false;
-    std::vector<std::vector<std::string>> rpn_head_config = {
-        {{"car"}},
-        {{"truck", "construction_vehicle"}},
-        {{"bus", "trailer"}},
-        {{"barrier"}},
-        {{"motorcycle", "bicycle"}},
-        {{"pedestrian", "traffic_cone"}},
-    };
+    std::vector<std::vector<std::string>> rpn_head_config;
 
     std::vector<std::string> getClassNames()
     {
@@ -57,13 +50,10 @@ std::pair<std::vector<torch::Tensor>, torch::Tensor> generate_anchors(
         point_cloud_range,
         anchor_generator_configs);
 
-    // From Yaml Config
-    std::vector<int> feature_map_stride = {2, 2, 2};
-
     std::vector<torch::Tensor> feature_map_size;
-    for (auto &stride : feature_map_stride)
+    for (auto anchor_gen_conf : anchor_generator_configs)
     {
-        feature_map_size.push_back(grid_size.slice(0, 0, 2) / stride);
+        feature_map_size.push_back(grid_size.slice(0, 0, 2) / anchor_gen_conf.feature_map_stride);
     }
 
     std::cout << "feature_map_size" << feature_map_size << '\n';

@@ -19,8 +19,9 @@ namespace pointpillars
   {
 
     // parameters: voxel_size, point_cloud_range, max_points_voxel, max_num_voxels
-    PointPillars(ModelConfig config)
+    PointPillars(ModelConfig config) : config(config)
     {
+      use_multihead = config.anchor_head_config.use_multihead;
       at::Tensor point_cloud_range = torch::tensor(config.point_cloud_range, torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU));
       at::Tensor voxel_size = torch::tensor(config.voxel_size, torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU));
       torch::Tensor grid_size = (point_cloud_range.slice(0, 3, 6) - point_cloud_range.slice(0, 0, 3)) / voxel_size;
@@ -40,13 +41,33 @@ namespace pointpillars
       // not so sure about the first parameter (num_channels)
       backbone2d = BaseBEVBackbone(config, num_filters[0]);
       register_module("backbone_2d", backbone2d);
-      anchor_head = AnchorHeadSingle(config.anchor_head_config, config.point_cloud_range, grid_size, 384);
-      register_module("dense_head", anchor_head);
+      if (use_multihead){
+        anchor_heads = AnchorHeadMulti(config, config.point_cloud_range, grid_size, 384);
+        register_module("dense_head", anchor_heads);
+        num_class = anchor_heads->num_class;
+      }
+      else{
+        anchor_head = AnchorHeadSingle(config.anchor_head_config, config.point_cloud_range, grid_size, 384);
+        register_module("dense_head", anchor_head);
+        num_class = anchor_head->num_class;
+      }
 
       std::cout << "Backend2d" << '\n';
       std::cout << backbone2d << '\n';
 
-      load_parameters("pointpillars_weights_simplified.pt");
+      std::cout << "DenseHead" << '\n';
+      if (use_multihead) {
+        std::cout << anchor_heads << '\n';
+      } else {
+        std::cout << anchor_head << '\n';
+      }
+      
+
+
+      // Single Head
+      // load_parameters("pointpillars_weights_simplified.pt");
+      load_parameters("pp_multi_weights_simplified.pt");
+
     }
 
     std::vector<BatchMap> forward(std::unordered_map<std::string, torch::Tensor> batch_dict)
@@ -63,7 +84,12 @@ namespace pointpillars
       out = backbone2d->forward(out);
       std::cout << "##############################!\n";
       print_shapes(out);
-      out = anchor_head->forward(out);
+      if (use_multihead) {
+        out = anchor_heads->forward(out);
+      } else {
+        out = anchor_head->forward(out);
+      }
+      
       std::cout << "##############################!\n";
       print_shapes(out);
 
@@ -203,7 +229,7 @@ namespace pointpillars
         src_cls_preds = cls_preds;
 
         std::cout << "cls_preds: " << cls_preds.sizes() << std::endl;
-        TORCH_CHECK(cls_preds.size(1) == 1 || cls_preds.size(1) == NUM_CLASS, "cls_preds shape mismatch");
+        TORCH_CHECK(cls_preds.size(1) == 1 || cls_preds.size(1) == this->num_class, "cls_preds shape mismatch");
 
         if (!batch_dict["cls_preds_normalized"].item<bool>())
         {
@@ -249,22 +275,13 @@ namespace pointpillars
       return pred_dicts;
     }
 
-    // USE_DIRECTION_CLASSIFIER: True
-    // DIR_OFFSET: 0.78539
-    // DIR_LIMIT_OFFSET: 0.0
-    // NUM_DIR_BINS: 2
-    // Anchor Head Settings
-    bool USE_DIRECTION_CLASSIFIER = true;
-    bool USE_MULTIHEAD = false;
-    int NUM_CLASS = 3;
-    int NUM_DIR_BINS = 2;
-    float DIR_OFFSET = 0.78539;
-    float DIR_LIMIT_OFFSET = 0.0;
-    std::vector<std::string> CLASS_NAMES = {"Car", "Pedestrian", "Cyclist"};
-
+    ModelConfig config;
+    int num_class;
+    bool use_multihead = false;
     PillarVFE vfe{nullptr};
     PointPillarScatter pp_scatter{nullptr};
     BaseBEVBackbone backbone2d{nullptr};
     AnchorHeadSingle anchor_head{nullptr};
+    AnchorHeadMulti anchor_heads{nullptr};
   };
 }

@@ -8,10 +8,10 @@
 #include "backbone2d.h"
 #include "model.h"
 
-class SingleHead : public torch::nn::Module
+class SingleHeadImpl : public torch::nn::Module
 {
 public:
-    SingleHead(ModelConfig model_config, int input_channels, int num_class, int num_anchors_per_location, int code_size, torch::Tensor head_label_indices, SeparateRegConfig separate_reg_config) : num_anchors_per_location(num_anchors_per_location),
+    SingleHeadImpl(ModelConfig model_config, int input_channels, int num_class, int num_anchors_per_location, int code_size, torch::Tensor head_label_indices, SeparateRegConfig separate_reg_config) : num_anchors_per_location(num_anchors_per_location),
                                                                                                                                                                                                     num_class(num_class),
                                                                                                                                                                                                     code_size(code_size), head_label_indices(head_label_indices), separate_reg_config(separate_reg_config)
     {
@@ -28,6 +28,8 @@ public:
         int num_middle_conv = separate_reg_config.num_middle_conv;
         int num_middle_filter = separate_reg_config.num_middle_filter;
         int c_in = input_channels;
+
+        conv_cls = torch::nn::Sequential();
 
         for (int k = 0; k < num_middle_conv; ++k)
         {
@@ -84,6 +86,7 @@ public:
             // auto conv_seq = torch::nn::Sequential(cur_conv_list.begin(), cur_conv_list.end());
             conv_box[name] = conv_seq;
             conv_box_names.push_back(name);
+            register_module(name, conv_seq);
         }
 
         assert(code_size_cnt == code_size);
@@ -91,6 +94,7 @@ public:
         if (model_config.anchor_head_config.use_direction_classifier)
         {
             this->conv_dir_cls = torch::nn::Conv2d(torch::nn::Conv2dOptions(input_channels, num_anchors_per_location * model_config.anchor_head_config.num_dir_bins, 1));
+            register_module("conv_dir_cls", this->conv_dir_cls);
         }
 
         this->use_multihead = model_config.anchor_head_config.use_multihead;
@@ -207,23 +211,23 @@ public:
         return ret_dict;
     }
 
-
-
+    torch::Tensor head_label_indices;
+    int num_class;
 private:
     int num_dir_bins;
     int num_anchors_per_location;
-    int num_class;
     int code_size;
     bool use_multihead;
     bool use_direction_classifier;
     std::vector<std::string> conv_box_names;
     BaseBEVBackbone backbone{nullptr};
     SeparateRegConfig separate_reg_config;
-    torch::Tensor head_label_indices;
-    torch::nn::Sequential conv_cls{nullptr};
+    torch::nn::Sequential conv_cls;
     std::unordered_map<std::string, torch::nn::Sequential> conv_box;
     torch::nn::Conv2d conv_dir_cls{nullptr};
 };
+
+TORCH_MODULE(SingleHead);
 
 class AnchorHeadMultiImpl : public torch::nn::Module
 {
@@ -259,6 +263,7 @@ public:
                 torch::nn::Conv2d(torch::nn::Conv2dOptions(input_channels, config.shared_conv_num_filter, 3).stride(1).padding(1).bias(false)),
                 torch::nn::BatchNorm2d(torch::nn::BatchNorm2dOptions(config.shared_conv_num_filter).eps(1e-3).momentum(0.01)),
                 torch::nn::ReLU());
+            register_module("shared_conv", this->shared_conv);
         }
         else
         {
@@ -266,25 +271,12 @@ public:
             config.shared_conv_num_filter = input_channels;
         }
 
-        // Ignore for now, probably only for training
-        // build_losses(model_cfg["LOSS_CONFIG"].toDict());
-
         std::cout << "num_anchors_per_location" << this->num_anchors_per_location.sizes() << this->num_anchors_per_location << '\n';
 
-        // if (model_cfg.get("SHARED_CONV_NUM_FILTER", nullptr) != nullptr) {
-        //     int shared_conv_num_filter = model_cfg.SHARED_CONV_NUM_FILTER;
-        //     this->shared_conv = std::make_unique<nn::Sequential>(
-        //         nn::Conv2d(input_channels, shared_conv_num_filter, 3, 1, 1, false),
-        //         nn::BatchNorm2d(shared_conv_num_filter, 1e-3, 0.01),
-        //         nn::ReLU()
-        //     );
-        // } else {
-        //     this->shared_conv = nullptr;
-        //     int shared_conv_num_filter = input_channels;
-        // }
         // this->rpn_heads = nullptr;
-        // this->make_multihead(shared_conv_num_filter);
+        this->make_multihead(config.shared_conv_num_filter);
     }
+
 
     void make_multihead(int input_channels)
     {
@@ -327,8 +319,9 @@ public:
                 head_label_indices,
                 this->config.separate_reg_config);
 
-            rpn_heads.push_back(rpnHead);
+            rpn_heads->push_back(rpnHead);
         }
+        register_module("rpn_heads", rpn_heads);
     }
 
     BatchMap forward(BatchMap data_dict) {
@@ -338,8 +331,8 @@ public:
         }
 
         std::vector<BatchMap> ret_dicts;
-        for (auto rpn_head : rpn_heads) {
-            ret_dicts.push_back(rpn_head.forward(spatial_features_2d));
+        for (auto rpn_head : rpn_heads->children()) {
+            ret_dicts.push_back(rpn_head->as<SingleHead>()->forward(spatial_features_2d));
         }
 
         std::vector<torch::Tensor> cls_preds;
@@ -380,32 +373,31 @@ public:
             ret["box_preds"],
             ret["dir_cls_preds"]
         );
-        // data_dict["batch_cls_preds"] = result.first;
-        // data_dict["batch_box_preds"] = result.second;
-        // data_dict["cls_preds_normalized"] = false;
 
-        // if (batch_cls_preds.is_list()) {
-        //     std::vector<torch::Tensor> multihead_label_mapping;
-        //     for (size_t idx = 0; idx < batch_cls_preds.size(); ++idx) {
-        //         multihead_label_mapping.push_back(rpn_heads[idx]->head_label_indices);
-        //     }
-        //     data_dict["multihead_label_mapping"] = multihead_label_mapping;
-        // }
-        
+        auto batch_cls_preds = result.first;
+
+        std::vector<torch::Tensor> multihead_label_mapping;
+        for (size_t idx = 0; idx < batch_cls_preds.size(); ++idx) {
+            multihead_label_mapping.push_back(rpn_heads[idx]->as<SingleHead>()->head_label_indices);
+        }
+        data_dict["multihead_label_mapping"] = torch::cat(multihead_label_mapping, 0);
+        data_dict["batch_cls_preds"] = torch::cat(batch_cls_preds, 0);
+        data_dict["batch_box_preds"] = result.second;
+        data_dict["cls_preds_normalized"] = torch::tensor({false});
 
         return data_dict;
     }
 
+    int num_class;
 private:
     AnchorHeadConfig config;
     ModelConfig model_config;
-    int num_class;
     torch::nn::Sequential shared_conv;
     std::vector<torch::Tensor> anchors;
     torch::Tensor num_anchors_per_location;
     AxisAlignedTargetAssigner target_assigner;
     ResidualCoder box_coder;
-    std::vector<SingleHead> rpn_heads;
+    torch::nn::ModuleList rpn_heads;
     // Define other member variables here
 };
 

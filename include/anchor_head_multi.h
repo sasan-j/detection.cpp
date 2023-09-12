@@ -232,7 +232,7 @@ TORCH_MODULE(SingleHead);
 class AnchorHeadMultiImpl : public torch::nn::Module
 {
 public:
-    AnchorHeadMultiImpl(ModelConfig model_config, std::vector<float> point_cloud_range, torch::Tensor grid_size, int input_channels)
+    AnchorHeadMultiImpl(ModelConfig model_config, std::vector<float> point_cloud_range, torch::Tensor grid_size, int input_channels) : box_coder(ResidualCoder())
     {
         this->config = model_config.anchor_head_config;
         this->model_config = model_config;

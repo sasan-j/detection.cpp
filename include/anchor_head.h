@@ -49,6 +49,8 @@ std::pair<std::vector<torch::Tensor>, torch::Tensor> generate_anchors(
     AnchorGenerator anchor_generator = AnchorGenerator(
         point_cloud_range,
         anchor_generator_configs);
+    
+    auto options = torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA);
 
     std::vector<torch::Tensor> feature_map_size;
     for (auto anchor_gen_conf : anchor_generator_configs)
@@ -63,7 +65,14 @@ std::pair<std::vector<torch::Tensor>, torch::Tensor> generate_anchors(
     {
         for (auto &anchors : anchors_list)
         {
-            auto pad_zeros = torch::zeros({anchors.size(0), anchor_ndim - 7});
+            // std::cout << "anchors " << anchors << " size " << anchors.sizes() << "\n";
+            std::vector<int64_t> dims = anchors.sizes().vec();
+            dims.pop_back();
+            dims.push_back(anchor_ndim - 7);
+
+            // auto pad_zeros = torch::zeros({anchors.size(0), anchor_ndim - 7}, options);
+            auto pad_zeros = torch::zeros(dims, options);
+            // std::cout << "zeroes " << pad_zeros << " size " << pad_zeros.sizes() << "\n";
             auto new_anchors = torch::cat({anchors, pad_zeros}, -1);
             anchors = new_anchors;
         }

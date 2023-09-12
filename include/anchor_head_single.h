@@ -10,7 +10,7 @@ class AnchorHeadSingleImpl : public torch::nn::Module
 {
 public:
     AnchorHeadSingleImpl(AnchorHeadConfig config, std::vector<float> point_cloud_range, torch::Tensor grid_size, int input_channels)
-        : box_coder(ResidualCoder())
+        : box_coder(ResidualCoder(9, false))
     {
         this->config = config;
         this->num_class = config.anchor_generator_configs.size();

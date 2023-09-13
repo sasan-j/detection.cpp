@@ -33,12 +33,17 @@ public:
         // this->upsample_strides = upsample_strides;
         // this->num_upsample_filters = num_upsample_filters;
 
-        int num_levels = layer_nums.size();
-        std::vector<int> c_in_list = {input_channels};
-        c_in_list.insert(c_in_list.end(), num_filters.begin(), num_filters.end() - 1);
-
         this->blocks = torch::nn::ModuleList();
         this->deblocks = torch::nn::ModuleList();
+
+        int num_levels = layer_nums.size();
+
+        std::vector<int> c_in_list = {input_channels};
+
+        if (num_levels > 0)
+        {
+            c_in_list.insert(c_in_list.end(), num_filters.begin(), num_filters.end() - 1);
+        }
 
         for (int idx = 0; idx < num_levels; ++idx)
         {
@@ -135,9 +140,14 @@ public:
         //     ups.push_back(x);
         // }
 
+        std::cout << blocks << std::endl;
+        std::cout << deblocks << std::endl;
+
         for (size_t i = 0; i < this->blocks->size(); ++i)
         {
             x = blocks[i]->as<torch::nn::Sequential>()->forward(x);
+
+            // std::cout << "x size " << x.sizes() << std::endl;
 
             // std::cout << "spatial_features: size(2) and sizes()" << spatial_features.size(2) << spatial_features.sizes() << std::endl;
             int stride = static_cast<int>(spatial_features.size(2) / x.size(2));
@@ -161,6 +171,8 @@ public:
         {
             x = ups[0];
         }
+
+        // std::cout << "x size " << x.sizes() << std::endl;
 
         if (this->deblocks->size() > this->blocks->size())
         {

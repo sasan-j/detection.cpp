@@ -170,35 +170,21 @@ std::vector<std::string> split_string(const std::string& input, char delimiter) 
 }
 
 
-// Define a custom module that includes a Sequential
-// class CustomSeqModuleImpl : public torch::nn::Module {
-// public:
-//     torch::nn::Sequential sequential;
-    
-//     CustomSeqModuleImpl() {
-//         this->sequential = torch::nn::Sequential();
-//     }
+torch::Tensor stackAndPad(const std::vector<torch::Tensor>& tensors) {
+    // Find the maximum length
+    int64_t max_length = 0;
+    for (const auto& tensor : tensors) {
+        max_length = std::max(max_length, tensor.size(0));
+    }
 
-//     void pushToSequential(const torch::nn::Module& module) {
-//         this->sequential->push_back(module);
-//     }
+    // Create new tensors with padding
+    std::vector<torch::Tensor> padded_tensors;
+    for (const auto& tensor : tensors) {
+        torch::Tensor padded_tensor = torch::zeros({max_length});
+        padded_tensor.slice(0, 0, tensor.size(0)).copy_(tensor);
+        padded_tensors.push_back(padded_tensor);
+    }
 
-//     torch::Tensor forward(torch::Tensor x) {
-//         return this->sequential->forward(x);
-//     }
-
-
-
-// };
-
-// // TORCH_MODULE(CustomSeqModule);
-
-// struct StackSequentialImpl : torch::nn::SequentialImpl {
-//   using SequentialImpl::SequentialImpl;
-
-//   torch::Tensor forward(torch::Tensor x) {
-//     return SequentialImpl::forward(x);
-//   }
-// };
-
-// TORCH_MODULE(StackSequential);
+    // Stack the tensors
+    return torch::stack(padded_tensors);
+}

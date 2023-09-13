@@ -139,19 +139,23 @@ std::pair<std::vector<torch::Tensor>, torch::Tensor> generate_anchors(
         // FAIL -   what():  The size of tensor a (7) must match the size of tensor b (12) at non-singleton dimension 1
         batch_box_preds = box_coder.decode_torch(batch_box_preds, batch_anchors);
 
-        float dir_offset = config.dir_offset;
-        float dir_limit_offset = config.dir_limit_offset;
-        torch::Tensor dir_cls_preds_viewed;
+        if (dir_cls_preds.size() > 0) {
 
-        dir_cls_preds_viewed = torch::cat(torch::TensorList(dir_cls_preds), 1).view({batch_size, num_anchors, -1});
+            float dir_offset = config.dir_offset;
+            float dir_limit_offset = config.dir_limit_offset;
+            torch::Tensor dir_cls_preds_viewed;
 
-        torch::Tensor dir_labels = std::get<1>(torch::max(dir_cls_preds_viewed, -1));
-        float period = (2 * M_PI / config.num_dir_bins);
+            dir_cls_preds_viewed = torch::cat(torch::TensorList(dir_cls_preds), 1).view({batch_size, num_anchors, -1});
 
-        torch::Tensor dir_rot = limit_period(
-            batch_box_preds.index({torch::indexing::Slice(), torch::indexing::Slice(), 6}) - dir_offset, dir_limit_offset, period);
+            torch::Tensor dir_labels = std::get<1>(torch::max(dir_cls_preds_viewed, -1));
+            float period = (2 * M_PI / config.num_dir_bins);
 
-        batch_box_preds.index_put_({torch::indexing::Slice(), torch::indexing::Slice(), 6}, dir_rot + dir_offset + period * dir_labels.to(batch_box_preds.dtype()));
+            torch::Tensor dir_rot = limit_period(
+                batch_box_preds.index({torch::indexing::Slice(), torch::indexing::Slice(), 6}) - dir_offset, dir_limit_offset, period);
+
+            batch_box_preds.index_put_({torch::indexing::Slice(), torch::indexing::Slice(), 6}, dir_rot + dir_offset + period * dir_labels.to(batch_box_preds.dtype()));
+        }
+
 
         return {batch_cls_preds, batch_box_preds};
     }

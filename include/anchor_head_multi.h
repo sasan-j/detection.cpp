@@ -17,10 +17,14 @@ public:
     {
         this->num_dir_bins = model_config.anchor_head_config.num_dir_bins;
         this->use_direction_classifier = model_config.anchor_head_config.use_direction_classifier;
-        // this->register_buffer("head_label_indices", head_label_indices);
+        register_buffer("head_label_indices", head_label_indices);
+
+
+        ModelConfig backbone_config = ModelConfig();
+
 
         // Initialize Backbone
-        this->backbone = BaseBEVBackbone(model_config, input_channels);
+        this->backbone = BaseBEVBackbone(backbone_config, input_channels);
 
         int code_size_cnt = 0;
         // torch::nn::Sequential conv_box;
@@ -150,35 +154,16 @@ public:
 
     BatchMap forward(torch::Tensor spatial_features_2d)
     {
-        // torch::Tensor spatial_features_2d = data_dict["spatial_features_2d"];
-
-        // torch::Tensor cls_preds = this->conv_cls(spatial_features_2d);
-        // torch::Tensor box_preds = this->conv_box(spatial_features_2d);
-
-        // cls_preds = cls_preds.permute({0, 2, 3, 1}).contiguous();
-        // box_preds = box_preds.permute({0, 2, 3, 1}).contiguous();
-
-        // this->forward_ret_dict["cls_preds"] = cls_preds;
-        // this->forward_ret_dict["box_preds"] = box_preds;
-
-        // torch::Tensor dir_cls_preds = this->conv_dir_cls(spatial_features_2d);
-        // dir_cls_preds = dir_cls_preds.permute({0, 2, 3, 1}).contiguous();
-        // this->forward_ret_dict["dir_cls_preds"] = dir_cls_preds;
-
-        // if (this->is_training())
-        // {
-        //     std::unordered_map<std::string, torch::Tensor> targets_dict = this->assign_targets(data_dict["gt_boxes"]);
-        //     for (const auto &pair : targets_dict)
-        //     {
-        //         this->forward_ret_dict[pair.first] = pair.second;
-        //     }
-        // }
-
         BatchMap ret_dict;
+
+        std::cout << "before backbone spatial_features_2d: " << spatial_features_2d.sizes() << '\n';
 
         // Call the base class's forward method
         auto super_output = this->backbone->forward({BatchMap{{"spatial_features", spatial_features_2d}}});
         spatial_features_2d = super_output.at("spatial_features_2d");
+
+        // Printout the spatial_features_2d tensor
+        std::cout << "after backbone spatial_features_2d: " << spatial_features_2d.sizes() << '\n';
 
         torch::Tensor cls_preds = this->conv_cls->forward(spatial_features_2d);
 
@@ -349,7 +334,8 @@ public:
         register_module("rpn_heads", rpn_heads);
     }
 
-    BatchMap forward(BatchMap data_dict) {
+
+    BatchData forward(BatchMap data_dict) {
         torch::Tensor spatial_features_2d = data_dict["spatial_features_2d"];
         if (this->config.shared_conv_num_filter != 0){
             spatial_features_2d = shared_conv->forward(spatial_features_2d);
@@ -381,6 +367,11 @@ public:
                 ret["dir_cls_preds"] = dir_cls_preds;
             }
         }
+
+        std::cout << "cls_preds: " << cls_preds.size() << '\n';
+        std::cout << "box_preds: " << box_preds.size() << '\n';
+        std::cout << "dir_cls_preds: " << dir_cls_preds.size() << '\n';
+
         //  else {
         //     ret["cls_preds"] = torch::cat(cls_preds, 1);
         //     ret["box_preds"] = torch::cat(box_preds, 1);
@@ -403,14 +394,18 @@ public:
 
         std::vector<torch::Tensor> multihead_label_mapping;
         for (size_t idx = 0; idx < batch_cls_preds.size(); ++idx) {
+            std::cout << "head_label_indices: " << rpn_heads[idx]->as<SingleHead>()->head_label_indices << '\n';
             multihead_label_mapping.push_back(rpn_heads[idx]->as<SingleHead>()->head_label_indices);
         }
-        data_dict["multihead_label_mapping"] = torch::cat(multihead_label_mapping, 0);
-        data_dict["batch_cls_preds"] = torch::cat(batch_cls_preds, 0);
-        data_dict["batch_box_preds"] = result.second;
-        data_dict["cls_preds_normalized"] = torch::tensor({false});
 
-        return data_dict;
+        BatchData output;
+        output.tensor_dict = data_dict;
+        output.tensor_dict["cls_preds_normalized"] = torch::tensor({false});
+        output.vector_dict["multihead_label_mapping"] = multihead_label_mapping;
+        output.vector_dict["batch_cls_preds"] = batch_cls_preds;
+        output.tensor_dict["batch_box_preds"] = result.second;
+
+        return output;
     }
 
     int num_class;

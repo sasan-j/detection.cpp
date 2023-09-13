@@ -23,3 +23,17 @@ struct ModelConfig
 
   AnchorHeadConfig anchor_head_config;
 };
+
+
+// struct BatchData{
+//     int batch_size;
+//     std::vector<torch::Tensor> batch_cls_preds;
+//     std::vector<torch::Tensor> batch_box_preds;
+//     std::vector<torch::Tensor> multihead_label_mapping;
+//     bool class_preds_normalized;
+// };
+
+struct BatchData{
+    std::unordered_map<std::string, torch::Tensor> tensor_dict;
+    std::unordered_map<std::string, std::vector<torch::Tensor>> vector_dict;
+};

@@ -41,12 +41,14 @@ namespace pointpillars
       // not so sure about the first parameter (num_channels)
       backbone2d = BaseBEVBackbone(config, num_filters[0]);
       register_module("backbone_2d", backbone2d);
-      if (use_multihead){
+      if (use_multihead)
+      {
         anchor_heads = AnchorHeadMulti(config, config.point_cloud_range, grid_size, 384);
         register_module("dense_head", anchor_heads);
         num_class = anchor_heads->num_class;
       }
-      else{
+      else
+      {
         anchor_head = AnchorHeadSingle(config.anchor_head_config, config.point_cloud_range, grid_size, 384);
         register_module("dense_head", anchor_head);
         num_class = anchor_head->num_class;
@@ -62,22 +64,25 @@ namespace pointpillars
       std::cout << backbone2d << '\n';
 
       std::cout << "DenseHead" << '\n';
-      if (use_multihead) {
+      if (use_multihead)
+      {
         std::cout << anchor_heads << '\n';
-      } else {
+      }
+      else
+      {
         std::cout << anchor_head << '\n';
       }
-      
-
 
       // Single Head
       // load_parameters("pointpillars_weights_simplified.pt");
+      // Multi Head
       load_parameters("pp_multi_weights_simplified.pt");
-
     }
 
     std::vector<BatchMap> forward(std::unordered_map<std::string, torch::Tensor> batch_dict)
     {
+      BatchData out_multi;
+
       auto out = vfe->forward(batch_dict);
       std::cout << "After PillarVFE!\n";
       std::cout << "##############################!\n";
@@ -88,16 +93,27 @@ namespace pointpillars
       print_shapes(out);
       std::cout << "spatial_feature max: " << out["spatial_features"].max() << '\n';
       out = backbone2d->forward(out);
+      std::cout << "After Backbone 2d!\n";
       std::cout << "##############################!\n";
       print_shapes(out);
-      if (use_multihead) {
-        out = anchor_heads->forward(out);
-      } else {
+      if (use_multihead)
+      {
+        out_multi = anchor_heads->forward(out);
+      }
+      else
+      {
         out = anchor_head->forward(out);
       }
-      
+
       std::cout << "##############################!\n";
-      print_shapes(out);
+      if (use_multihead)
+      {
+        print_shapes(out_multi.tensor_dict);
+      }
+      else
+      {
+        print_shapes(out);
+      }
 
       // Use one of many tensor manipulation functions.
       // x = torch::relu(fc1->forward(x.reshape({x.size(0), 784})));
@@ -105,7 +121,7 @@ namespace pointpillars
       // x = torch::relu(fc2->forward(x));
       // x = torch::log_softmax(fc3->forward(x), /*dim=*/1);
 
-      auto processed_out = postprocess(out);
+      auto processed_out = postprocess(out_multi);
 
       return processed_out;
     }
@@ -159,7 +175,8 @@ namespace pointpillars
         if (std::find(param_names.begin(), param_names.end(), name) != param_names.end())
         {
           // std::cout << name << " exists: " << param.sizes() << model_params.find(name)->sizes() << std::endl;
-          if (param.sizes() != model_params.find(name)->sizes()){
+          if (param.sizes() != model_params.find(name)->sizes())
+          {
             std::cout << name << " exists but difference sizes theirs vs ours: " << param.sizes() << model_params.find(name)->sizes() << std::endl;
           }
           model_params.find(name)->copy_(param);
@@ -167,9 +184,12 @@ namespace pointpillars
         else
         {
           // don't print running_mean and running_var and num_batches_tracked
-          if (name.find("running_mean") == std::string::npos && name.find("running_var") == std::string::npos && name.find("num_batches_tracked") == std::string::npos){
-              std::cout << name << " does not exist among model parameters." << std::endl;
-          } else{
+          if (name.find("running_mean") == std::string::npos && name.find("running_var") == std::string::npos && name.find("num_batches_tracked") == std::string::npos)
+          {
+            std::cout << name << " does not exist among model parameters." << std::endl;
+          }
+          else
+          {
           }
         };
       }
@@ -197,9 +217,11 @@ namespace pointpillars
       std::string EVAL_METRIC = "kitti";
     };
 
-    std::vector<BatchMap> postprocess(BatchMap batch_dict)
+    std::vector<BatchMap> postprocess(BatchData batch_data)
     {
-      auto nms_config = NMSConfig{false, "nms_gpu", 0.01, 4096, 500};
+      BatchMap batch_dict = batch_data.tensor_dict;
+      // auto nms_config = NMSConfig{false, "nms_gpu", 0.01, 4096, 500};
+      auto nms_config = NMSConfig{true, "nms_gpu", 0.02, 1000, 83};
       auto post_processing_config = PostProcessingConfig{std::vector<double>{0.3, 0.5, 0.7}, 0.1, false, "kitti"};
 
       auto batch_size = batch_dict["batch_size"][0].item<int>();
@@ -238,54 +260,121 @@ namespace pointpillars
 
         torch::Tensor cls_preds, src_cls_preds, label_preds;
 
-        std::cout << "batch_dict - batch_cls_preds: " << batch_dict["batch_cls_preds"].sizes() << std::endl;
-        std::cout << "batch_mask: " << batch_mask << std::endl;
-        cls_preds = batch_dict["batch_cls_preds"].index({batch_mask});
-        src_cls_preds = cls_preds;
 
-        std::cout << "cls_preds: " << cls_preds.sizes() << std::endl;
-        TORCH_CHECK(cls_preds.size(1) == 1 || cls_preds.size(1) == this->num_class, "cls_preds shape mismatch");
+        /////////////////
+        std::vector<torch::Tensor> cls_preds_list;
 
-        if (!batch_dict["cls_preds_normalized"].item<bool>())
+        // Identify if this is a case of multihead
+        if (batch_data.vector_dict.find("batch_cls_preds") != batch_data.vector_dict.end())
         {
-          cls_preds = torch::sigmoid(cls_preds);
-        }
-
-        std::tie(cls_preds, label_preds) = torch::max(cls_preds, -1);
-
-        if (batch_dict.find("has_class_labels") != batch_dict.end() && batch_dict["has_class_labels"].item<bool>())
-        {
-          std::string label_key = batch_dict.find("roi_labels") != batch_dict.end() ? "roi_labels" : "batch_pred_labels";
-          label_preds = batch_dict[label_key].index({index});
+          for (auto cls_preds_item : batch_data.vector_dict["batch_cls_preds"])
+          {
+            if (!batch_dict["cls_preds_normalized"].item<bool>())
+            {
+              cls_preds_list.push_back(torch::sigmoid(cls_preds_item.index({batch_mask})));
+            }
+            else {
+              cls_preds_list.push_back(cls_preds_item.index({batch_mask}));
+            }
+          }
         }
         else
         {
-          label_preds = label_preds + 1;
+          std::cout << "batch_dict - batch_cls_preds: " << batch_dict["batch_cls_preds"].sizes() << std::endl;
+          std::cout << "batch_mask: " << batch_mask << std::endl;
+          cls_preds = batch_dict["batch_cls_preds"].index({batch_mask});
+          src_cls_preds = cls_preds;
+
+          std::cout << "cls_preds: " << cls_preds.sizes() << std::endl;
+          TORCH_CHECK(cls_preds.size(1) == 1 || cls_preds.size(1) == this->num_class, "cls_preds shape mismatch");
+
+          if (!batch_dict["cls_preds_normalized"].item<bool>())
+          {
+            cls_preds = torch::sigmoid(cls_preds);
+          }
         }
 
-        auto nms_result = class_agnostic_nms(
-            cls_preds, box_preds, nms_config, 0.1);
+        //////////////////////////////////////////////////
+        std::vector<torch::Tensor> multihead_label_mapping;
 
-        torch::Tensor selected = std::get<0>(nms_result);
-        torch::Tensor selected_scores = std::get<1>(nms_result);
+        if (nms_config.MULTI_CLASSES_NMS) {
+          if (cls_preds_list.size() == 0) { // If cls_preds is not a list
+              cls_preds_list.push_back(cls_preds);  // Add an additional dimension to mimic list
+              multihead_label_mapping.push_back(torch::arange(1, num_class, cls_preds_list[0].device()));
+          } else {
+              multihead_label_mapping = batch_data.vector_dict["multihead_label_mapping"];  // Assuming this is a vector of tensors
+          }
 
-        if (post_processing_config.OUTPUT_RAW_SCORE)
-        {
-          auto max_result = torch::max(src_cls_preds, -1);
-          torch::Tensor max_cls_preds = std::get<0>(max_result);
-          selected_scores = max_cls_preds.index({selected});
+          int64_t cur_start_idx = 0;
+          std::vector<torch::Tensor> pred_scores, pred_labels, pred_boxes;
+
+          for (int i = 0; i < cls_preds_list.size(); ++i) {
+              torch::Tensor cur_cls_preds = cls_preds_list[i];
+              torch::Tensor cur_label_mapping = multihead_label_mapping[i];
+              
+              assert(cur_cls_preds.size(1) == cur_label_mapping.size(0));
+
+              torch::Tensor cur_box_preds = box_preds.slice(0, cur_start_idx, cur_start_idx + cur_cls_preds.size(0));
+
+              std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> nms_result = 
+                  multi_classes_nms(
+                      cur_cls_preds, cur_box_preds, 
+                      nms_config, 
+                      post_processing_config.SCORE_THRESH
+                  );
+
+              torch::Tensor cur_pred_scores = std::get<0>(nms_result);
+              torch::Tensor cur_pred_labels = cur_label_mapping.index_select(0, std::get<1>(nms_result));
+              torch::Tensor cur_pred_boxes = std::get<2>(nms_result);
+
+              pred_scores.push_back(cur_pred_scores);
+              pred_labels.push_back(cur_pred_labels);
+              pred_boxes.push_back(cur_pred_boxes);
+
+              cur_start_idx += cur_cls_preds.size(0);
+          }
+
+          torch::Tensor final_scores = torch::cat(pred_scores, 0);
+          torch::Tensor final_labels = torch::cat(pred_labels, 0);
+          torch::Tensor final_boxes = torch::cat(pred_boxes, 0);
+        } else {
+          // Single Head Kinda thing
+          std::tie(cls_preds, label_preds) = torch::max(cls_preds, -1);
+
+          if (batch_dict.find("has_class_labels") != batch_dict.end() && batch_dict["has_class_labels"].item<bool>())
+          {
+            std::string label_key = batch_dict.find("roi_labels") != batch_dict.end() ? "roi_labels" : "batch_pred_labels";
+            label_preds = batch_dict[label_key].index({index});
+          }
+          else
+          {
+            label_preds = label_preds + 1;
+          }
+
+          auto nms_result = class_agnostic_nms(
+              cls_preds, box_preds, nms_config, post_processing_config.SCORE_THRESH);
+
+          torch::Tensor selected = std::get<0>(nms_result);
+          torch::Tensor selected_scores = std::get<1>(nms_result);
+
+          if (post_processing_config.OUTPUT_RAW_SCORE)
+          {
+            auto max_result = torch::max(src_cls_preds, -1);
+            torch::Tensor max_cls_preds = std::get<0>(max_result);
+            selected_scores = max_cls_preds.index({selected});
+          }
+
+          torch::Tensor final_scores = selected_scores;
+          torch::Tensor final_labels = label_preds.index({selected});
+          torch::Tensor final_boxes = box_preds.index({selected});
+
+          std::unordered_map<std::string, torch::Tensor> record_dict = {
+              {"points", points},
+              {"pred_boxes", final_boxes},
+              {"pred_scores", final_scores},
+              {"pred_labels", final_labels}};
+          pred_dicts.push_back(record_dict);
         }
-
-        torch::Tensor final_scores = selected_scores;
-        torch::Tensor final_labels = label_preds.index({selected});
-        torch::Tensor final_boxes = box_preds.index({selected});
-
-        std::unordered_map<std::string, torch::Tensor> record_dict = {
-            {"points", points},
-            {"pred_boxes", final_boxes},
-            {"pred_scores", final_scores},
-            {"pred_labels", final_labels}};
-        pred_dicts.push_back(record_dict);
       }
       return pred_dicts;
     }

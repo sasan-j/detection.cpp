@@ -107,12 +107,12 @@ AnchorHeadConfig pp_multi_head = {
   64, // shared_conv_num_filter
   false, // class_agnostic
   {
-        {{"car"}},
-        {{"truck", "construction_vehicle"}},
-        {{"bus", "trailer"}},
-        {{"barrier"}},
-        {{"motorcycle", "bicycle"}},
-        {{"pedestrian", "traffic_cone"}},
+        {"car"},
+        {"truck", "construction_vehicle"},
+        {"bus", "trailer"},
+        {"barrier"},
+        {"motorcycle", "bicycle"},
+        {"pedestrian", "traffic_cone"},
     } // rpn_head_config
 };
 
@@ -143,6 +143,12 @@ ModelConfig model_config = {
     {128, 128, 128}, // backbone_num_upsample_filters
     pp_multi_head // anchor_head_config
 };
+
+
+  std::cout << "rpn_head_config:" << '\n';
+  for (const auto& kv : model_config.anchor_head_config.rpn_head_config) {
+    std::cout << kv << '\n';
+  }
 
   // torch::Tensor dummy_pcd = torch::rand({65536, 4});
   // std::string file_path = "rc_scaled.bin";
@@ -225,20 +231,20 @@ ModelConfig model_config = {
   std::cout << "Model was instantiated" << '\n';
 
   // Execute the model and turn its output into a tensor.
-  auto pred_dicts = model.forward(batch_dict);
+  // auto pred_dicts = model.forward(batch_dict);
 
-  std::cout << "pred_dict" << '\n';
+  // std::cout << "pred_dict" << '\n';
 
-  auto batch_preds = pred_dicts[0];
+  // auto batch_preds = pred_dicts[0];
 
   // for (const auto& kv : batch_preds) {
   //   std::cout << kv.first << kv.second << '\n';
   // }
 
 
-  std::cout << "output" << '\n';
+  // std::cout << "output" << '\n';
 
-  save_map("output.pt", batch_preds);
+  // save_map("output.pt", batch_preds);
 
 
   // torch::jit::script::Module voxelizer;

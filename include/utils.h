@@ -168,3 +168,37 @@ std::vector<std::string> split_string(const std::string& input, char delimiter) 
 
     return tokens;
 }
+
+
+// Define a custom module that includes a Sequential
+// class CustomSeqModuleImpl : public torch::nn::Module {
+// public:
+//     torch::nn::Sequential sequential;
+    
+//     CustomSeqModuleImpl() {
+//         this->sequential = torch::nn::Sequential();
+//     }
+
+//     void pushToSequential(const torch::nn::Module& module) {
+//         this->sequential->push_back(module);
+//     }
+
+//     torch::Tensor forward(torch::Tensor x) {
+//         return this->sequential->forward(x);
+//     }
+
+
+
+// };
+
+// // TORCH_MODULE(CustomSeqModule);
+
+// struct StackSequentialImpl : torch::nn::SequentialImpl {
+//   using SequentialImpl::SequentialImpl;
+
+//   torch::Tensor forward(torch::Tensor x) {
+//     return SequentialImpl::forward(x);
+//   }
+// };
+
+// TORCH_MODULE(StackSequential);

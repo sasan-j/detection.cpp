@@ -48,10 +48,17 @@ public:
                                   .stride(1)
                                   .padding(1)));
 
+        register_module("conv_cls", this->conv_cls);
 
+        // std::vector<std::pair<std::string, std::shared_ptr<torch::nn::Module>>> conv_box_vect;
+
+        torch::OrderedDict<std::string, std::shared_ptr<torch::nn::Module>> conv_box_od;
         for (const std::string &reg_config : separate_reg_config.reg_list)
         {
+            // auto conv_seq =  std::shared_ptr<CustomSeqModuleImpl>();
             auto conv_seq = torch::nn::Sequential();
+            // auto conv_seq = std::shared_ptr<torch::nn::Sequential>();
+
             std::vector<std::string> reg_split = split_string(reg_config, ':');
             std::string reg_name = reg_split[0];
             int reg_channel = std::stoi(reg_split[1]);
@@ -66,6 +73,9 @@ public:
                                                         .padding(1)
                                                         .bias(false));
                 torch::nn::init::kaiming_normal_(tmp_conv2d->weight, 0, torch::kFanOut, torch::kReLU);
+                // conv_seq->sequential->push_back(tmp_conv2d);
+                // conv_seq->sequential->push_back(torch::nn::BatchNorm2d(num_middle_filter));
+                // conv_seq->sequential->push_back(torch::nn::ReLU());
                 conv_seq->push_back(tmp_conv2d);
                 conv_seq->push_back(torch::nn::BatchNorm2d(num_middle_filter));
                 conv_seq->push_back(torch::nn::ReLU());
@@ -77,6 +87,7 @@ public:
                                                       .bias(true));
             torch::nn::init::kaiming_normal_(tmp_conv2d_2->weight, 0, torch::kFanOut, torch::kReLU);
             torch::nn::init::constant_(tmp_conv2d_2->bias, 0);
+            // conv_seq->sequential->push_back(tmp_conv2d_2);
             conv_seq->push_back(tmp_conv2d_2);
 
             code_size_cnt += reg_channel;
@@ -84,10 +95,19 @@ public:
             std::sprintf(buffer, "conv_%s", reg_name.c_str());
             const std::string name(buffer);
             // auto conv_seq = torch::nn::Sequential(cur_conv_list.begin(), cur_conv_list.end());
-            conv_box[name] = conv_seq;
-            conv_box_names.push_back(name);
+            // conv_box->insert(name, std::static_pointer_cast<torch::nn::Module>(conv_seq));
+            // conv_box_od.insert(name, conv_seq.ptr());
+            // conv_box_vect.push_back(std::make_pair(name, conv_seq->as<torch::nn::Module>());
             register_module(name, conv_seq);
+            conv_box->push_back(conv_seq);
+            conv_box_names.push_back(name);
+            conv_box_map[name] = conv_box->size() - 1;
+            // register_module(name, conv_seq);
         }
+        // conv_box->update(conv_box_vect);
+        // conv_box->update(conv_box_od);
+
+        register_module("conv_box", this->conv_box);
 
         assert(code_size_cnt == code_size);
 
@@ -165,7 +185,7 @@ public:
 
         std::vector<torch::Tensor> box_preds_list;
         for (const std::string& reg_name : this->conv_box_names) {
-            box_preds_list.push_back(this->conv_box.at(reg_name)->forward(spatial_features_2d));
+            box_preds_list.push_back(this->conv_box[conv_box_map[reg_name]]->as<torch::nn::Sequential>()->forward(spatial_features_2d));
         }
         box_preds = torch::cat(box_preds_list, 1);
     
@@ -223,8 +243,10 @@ private:
     BaseBEVBackbone backbone{nullptr};
     SeparateRegConfig separate_reg_config;
     torch::nn::Sequential conv_cls;
-    std::unordered_map<std::string, torch::nn::Sequential> conv_box;
+    // torch::nn::ModuleDict conv_box;
+    torch::nn::ModuleList conv_box;
     torch::nn::Conv2d conv_dir_cls{nullptr};
+    std::unordered_map<std::string, int> conv_box_map;
 };
 
 TORCH_MODULE(SingleHead);
@@ -236,6 +258,7 @@ public:
     {
         this->config = model_config.anchor_head_config;
         this->model_config = model_config;
+        this->num_class = model_config.anchor_head_config.getClassNames().size();
 
         // Initialization as per template
 

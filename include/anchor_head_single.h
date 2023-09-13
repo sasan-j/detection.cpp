@@ -46,7 +46,7 @@ public:
         // Ignore for now, probably only for training
         // build_losses(model_cfg["LOSS_CONFIG"].toDict());
 
-        std::cout << "num_anchors_per_location " << this->num_anchors_per_location.sizes() << this->num_anchors_per_location << '\n';
+        // std::cout << "num_anchors_per_location " << this->num_anchors_per_location.sizes() << this->num_anchors_per_location << '\n';
 
         // AnchorHeadSingle Constructor
         this->sum_num_anchors_per_location = this->num_anchors_per_location.sum().item<int64_t>();
@@ -55,9 +55,9 @@ public:
         this->conv_box = torch::nn::Conv2d(torch::nn::Conv2dOptions(input_channels, this->sum_num_anchors_per_location * this->box_coder.code_size, 1));
         this->conv_dir_cls = torch::nn::Conv2d(torch::nn::Conv2dOptions(input_channels, this->sum_num_anchors_per_location * this->config.num_dir_bins, 1));
 
-        std::cout << "conv_cls " << this->conv_cls << '\n';
-        std::cout << "conv_box " << this->conv_box << '\n';
-        std::cout << "conv_dir_cls " << this->conv_dir_cls << '\n';
+        // std::cout << "conv_cls " << this->conv_cls << '\n';
+        // std::cout << "conv_box " << this->conv_box << '\n';
+        // std::cout << "conv_dir_cls " << this->conv_dir_cls << '\n';
 
         register_module("conv_cls", this->conv_cls);
         register_module("conv_box", this->conv_box);

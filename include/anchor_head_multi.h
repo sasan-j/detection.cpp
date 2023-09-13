@@ -96,16 +96,17 @@ public:
             const std::string name(buffer);
             // auto conv_seq = torch::nn::Sequential(cur_conv_list.begin(), cur_conv_list.end());
             // conv_box->insert(name, std::static_pointer_cast<torch::nn::Module>(conv_seq));
-            // conv_box_od.insert(name, conv_seq.ptr());
+            conv_box_od.insert(name, conv_seq.ptr());
             // conv_box_vect.push_back(std::make_pair(name, conv_seq->as<torch::nn::Module>());
-            register_module(name, conv_seq);
-            conv_box->push_back(conv_seq);
+            // register_module(name, conv_seq);
+            // Working
+            // conv_box->push_back(conv_seq);
             conv_box_names.push_back(name);
             conv_box_map[name] = conv_box->size() - 1;
             // register_module(name, conv_seq);
         }
         // conv_box->update(conv_box_vect);
-        // conv_box->update(conv_box_od);
+        conv_box->update(conv_box_od);
 
         register_module("conv_box", this->conv_box);
 
@@ -185,7 +186,8 @@ public:
 
         std::vector<torch::Tensor> box_preds_list;
         for (const std::string& reg_name : this->conv_box_names) {
-            box_preds_list.push_back(this->conv_box[conv_box_map[reg_name]]->as<torch::nn::Sequential>()->forward(spatial_features_2d));
+            box_preds_list.push_back(this->conv_box[reg_name]->as<torch::nn::Sequential>()->forward(spatial_features_2d));
+            // box_preds_list.push_back(this->conv_box[conv_box_map[reg_name]]->as<torch::nn::Sequential>()->forward(spatial_features_2d));
         }
         box_preds = torch::cat(box_preds_list, 1);
     
@@ -243,8 +245,8 @@ private:
     BaseBEVBackbone backbone{nullptr};
     SeparateRegConfig separate_reg_config;
     torch::nn::Sequential conv_cls;
-    // torch::nn::ModuleDict conv_box;
-    torch::nn::ModuleList conv_box;
+    torch::nn::ModuleDict conv_box;
+    // torch::nn::ModuleList conv_box;
     torch::nn::Conv2d conv_dir_cls{nullptr};
     std::unordered_map<std::string, int> conv_box_map;
 };
@@ -294,7 +296,7 @@ public:
             config.shared_conv_num_filter = input_channels;
         }
 
-        std::cout << "num_anchors_per_location" << this->num_anchors_per_location.sizes() << this->num_anchors_per_location << '\n';
+        // std::cout << "num_anchors_per_location" << this->num_anchors_per_location.sizes() << this->num_anchors_per_location << '\n';
 
         // this->rpn_heads = nullptr;
         this->make_multihead(config.shared_conv_num_filter);

@@ -25,8 +25,8 @@ public:
             // BatchNorm1d model(BatchNorm1dOptions(out_channels).eps(1e-3).momentum(0.01).affine(false).track_running_stats(true));
             this->linear = torch::nn::Linear(torch::nn::LinearOptions(in_channels, out_channels).bias(false));
             this->norm = torch::nn::BatchNorm1d(torch::nn::BatchNorm1dOptions(out_channels).eps(1e-3).momentum(0.01));
-            std::cout << "Linear: " << this->linear << "\n";
-            std::cout << "Norm: " << this->norm << "\n";
+            // std::cout << "Linear: " << this->linear << "\n";
+            // std::cout << "Norm: " << this->norm << "\n";
             
             register_module("linear", this->linear);
             register_module("norm", this->norm);
@@ -91,7 +91,8 @@ class PillarVFEImpl : public torch::nn::Module
 {
 private:
     std::vector<int32_t> num_filters;
-    std::vector<PFNLayer> pfn_layers;
+    // std::vector<PFNLayer> pfn_layers;
+    torch::nn::ModuleList pfn_layers;
     bool use_norm;
     bool with_distance;
     bool use_absolute_xyz;
@@ -130,18 +131,20 @@ public:
         {
             int64_t in_filters = this->num_filters[i];
             int64_t out_filters = this->num_filters[i + 1];
-            pfn_layers.push_back(PFNLayer(in_filters, out_filters, this->use_norm, i >= this->num_filters.size() - 2));
+            pfn_layers->push_back(PFNLayer(in_filters, out_filters, this->use_norm, i >= this->num_filters.size() - 2));
         }
 
-        for (size_t i = 0; i < pfn_layers.size(); ++i)
-        {
-            if (i == 0) {
-                register_module("pfn_layers", pfn_layers[i]);
-            } else {
-                register_module("pfn_layers_" + std::to_string(i), pfn_layers[i]);
-            }
+        // for (size_t i = 0; i < pfn_layers.size(); ++i)
+        // {
+        //     if (i == 0) {
+        //         register_module("pfn_layers", pfn_layers[i]);
+        //     } else {
+        //         register_module("pfn_layers_" + std::to_string(i), pfn_layers[i]);
+        //     }
             
-        }
+        // }
+
+        register_module("pfn_layers", pfn_layers);
         
 
         this->voxel_x = voxel_size[0];
@@ -214,11 +217,11 @@ public:
         mask = mask.unsqueeze(-1).to(voxel_features.dtype());
         combined_features *= mask;
 
-        std::cout << "combined_features" << combined_features.sizes() << '\n';
+        // std::cout << "combined_features" << combined_features.sizes() << '\n';
 
-        for (auto &pfn : pfn_layers)
+        for (auto &pfn : pfn_layers->children())
         {
-            combined_features = pfn->forward(combined_features);
+            combined_features = pfn->as<PFNLayer>()->forward(combined_features);
         }
         combined_features = combined_features.squeeze();
 

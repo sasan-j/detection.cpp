@@ -23,7 +23,7 @@ public:
         this->upsample_strides = model_config.backbone_upsample_strides;
         this->num_upsample_filters = model_config.backbone_num_upsample_filters;
 
-        std::cout << layer_nums.size() << layer_strides.size() << num_filters.size() << std::endl;
+        // std::cout << layer_nums.size() << layer_strides.size() << num_filters.size() << std::endl;
         assert(layer_nums.size() == layer_strides.size() && layer_strides.size() == num_filters.size());
         assert(upsample_strides.size() == num_upsample_filters.size());
 
@@ -68,11 +68,11 @@ public:
                         torch::nn::ReLU());
                     // register_module("deblocks_" + std::to_string(idx), deblock_layers);
                     auto named_params = deblock_layers->named_parameters();
-                    for (auto iter = named_params.begin(); iter != named_params.end(); ++iter)
-                    {
-                        std::cout << iter->key() << iter->value().sizes() << std::endl;
-                    }
-                    std::cout << deblock_layers << std::endl;
+                    // for (auto iter = named_params.begin(); iter != named_params.end(); ++iter)
+                    // {
+                    //     std::cout << iter->key() << iter->value().sizes() << std::endl;
+                    // }
+                    // std::cout << deblock_layers << std::endl;
                     this->deblocks->push_back(deblock_layers);
                 }
                 else
@@ -85,11 +85,11 @@ public:
                     // register_module("deblocks_" + std::to_string(idx), deblock_layers);
 
                     auto named_params = deblock_layers->named_parameters();
-                    for (auto iter = named_params.begin(); iter != named_params.end(); ++iter)
-                    {
-                        std::cout << iter->key() << iter->value().sizes() << std::endl;
-                    }
-                    std::cout << deblock_layers << std::endl;
+                    // for (auto iter = named_params.begin(); iter != named_params.end(); ++iter)
+                    // {
+                    //     std::cout << iter->key() << iter->value().sizes() << std::endl;
+                    // }
+                    // std::cout << deblock_layers << std::endl;
                     this->deblocks->push_back(deblock_layers);
                 }
             }
@@ -106,8 +106,8 @@ public:
             this->deblocks->push_back(deblock_layers);
         }
 
-        std::cout << "blocks: " << this->blocks << std::endl;
-        std::cout << "deblocks: " << this->deblocks << std::endl;
+        // std::cout << "blocks: " << this->blocks << std::endl;
+        // std::cout << "deblocks: " << this->deblocks << std::endl;
 
         register_module("blocks", this->blocks);
         register_module("deblocks", this->deblocks);
@@ -139,7 +139,7 @@ public:
         {
             x = blocks[i]->as<torch::nn::Sequential>()->forward(x);
 
-            std::cout << "spatial_features: size(2) and sizes()" << spatial_features.size(2) << spatial_features.sizes() << std::endl;
+            // std::cout << "spatial_features: size(2) and sizes()" << spatial_features.size(2) << spatial_features.sizes() << std::endl;
             int stride = static_cast<int>(spatial_features.size(2) / x.size(2));
             ret_dict["spatial_features_" + std::to_string(stride) + "x"] = x;
 
@@ -189,7 +189,7 @@ public:
         {
             x = blocks[i]->as<torch::nn::Sequential>()->forward(x);
 
-            std::cout << "spatial_features: size(2) and sizes()" << spatial_features.size(2) << spatial_features.sizes() << std::endl;
+            // std::cout << "spatial_features: size(2) and sizes()" << spatial_features.size(2) << spatial_features.sizes() << std::endl;
             int stride = static_cast<int>(spatial_features.size(2) / x.size(2));
             ret_dict["spatial_features_" + std::to_string(stride) + "x"] = x;
 

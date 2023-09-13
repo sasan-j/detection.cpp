@@ -58,13 +58,13 @@ public:
 
     std::pair<std::vector<torch::Tensor>, torch::Tensor> generate_anchors(std::vector<torch::Tensor> grid_sizes)
     {
-        std::cout << "grid_size.size(): " << grid_sizes.size() << " num_of_anchor_sets: " << num_of_anchor_sets << '\n';
+        // std::cout << "grid_size.size(): " << grid_sizes.size() << " num_of_anchor_sets: " << num_of_anchor_sets << '\n';
         assert(grid_sizes.size() == num_of_anchor_sets);
 
         std::vector<torch::Tensor> all_anchors;
         std::vector<int32_t> num_anchors_per_location;
 
-        std::cout << "grid_sizes" << grid_sizes << '\n';
+        // std::cout << "grid_sizes" << grid_sizes << '\n';
 
         for (int i = 0; i < num_of_anchor_sets; i++)
         {
@@ -74,11 +74,11 @@ public:
             auto anchor_height = anchor_bottom_heights[i];
             auto align_center_i = align_center[i];
 
-            std::cout << "anchor_size " << anchor_size << " size: " << anchor_size.size() << '\n';
-            std::cout << "anchor_height " << anchor_height << " size: " << anchor_height.size() << '\n';
-            std::cout << "anchor_rotation " << anchor_rotation << " size: " << anchor_rotation.size() << '\n';
-            std::cout << "grid_size " << grid_size << " size: " << grid_size.sizes() << '\n';
-            std::cout << "align_center_i " << align_center_i << '\n';
+            // std::cout << "anchor_size " << anchor_size << " size: " << anchor_size.size() << '\n';
+            // std::cout << "anchor_height " << anchor_height << " size: " << anchor_height.size() << '\n';
+            // std::cout << "anchor_rotation " << anchor_rotation << " size: " << anchor_rotation.size() << '\n';
+            // std::cout << "grid_size " << grid_size << " size: " << grid_size.sizes() << '\n';
+            // std::cout << "align_center_i " << align_center_i << '\n';
 
             num_anchors_per_location.push_back(anchor_rotation.size() * anchor_size.size() * anchor_height.size());
 
@@ -118,14 +118,14 @@ public:
             anchors = anchors.permute({2, 1, 0, 3, 4, 5}).contiguous();
             anchors.index({torch::indexing::Slice(), torch::indexing::Slice(), torch::indexing::Slice(), torch::indexing::Slice(), torch::indexing::Slice(), 2}) += anchors.index({torch::indexing::Slice(), torch::indexing::Slice(), torch::indexing::Slice(), torch::indexing::Slice(), torch::indexing::Slice(), 5}) / 2;
             all_anchors.push_back(anchors);
-            std::cout << "bottom of loop" << '\n';
+            // std::cout << "bottom of loop" << '\n';
         }
 
         auto options = torch::TensorOptions().dtype(torch::kInt32); // or whatever data type num_anchors_per_location holds
         // auto out = torch::from_blob(num_anchors_per_location.data(), {num_anchors_per_location.size()}, options);
         auto out = torch::tensor(num_anchors_per_location, options);
 
-        std::cout << "out " << out << '\n';
+        // std::cout << "out " << out << '\n';
         return {all_anchors, out};
     }
 };

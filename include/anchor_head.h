@@ -58,7 +58,7 @@ std::pair<std::vector<torch::Tensor>, torch::Tensor> generate_anchors(
         feature_map_size.push_back(grid_size.slice(0, 0, 2) / anchor_gen_conf.feature_map_stride);
     }
 
-    std::cout << "feature_map_size" << feature_map_size << '\n';
+    // std::cout << "feature_map_size" << feature_map_size << '\n';
     auto [anchors_list, num_anchors_per_location_list] = anchor_generator.generate_anchors(feature_map_size);
 
     if (anchor_ndim != 7)

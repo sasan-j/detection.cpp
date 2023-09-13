@@ -96,7 +96,7 @@ target_assigner_conf_multi.box_coder_encode_angle_by_sincos = true;
 
 AnchorHeadConfig pp_multi_head = {
   2, // num_dir_bins;
-  true, // use_direction_classifier;
+  false, // use_direction_classifier;
   0.78539, // dir_offset;
   0.0, // dir_limit_offset;
   target_assigner_conf_multi, // target_assigner_config

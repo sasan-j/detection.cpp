@@ -52,6 +52,12 @@ namespace pointpillars
         num_class = anchor_head->num_class;
       }
 
+      std::cout << "PointPillarVFE" << '\n';
+      std::cout << vfe << '\n';
+
+      std::cout << "PointPillarScatter" << '\n';
+      std::cout << pp_scatter << '\n';
+
       std::cout << "Backend2d" << '\n';
       std::cout << backbone2d << '\n';
 
@@ -123,16 +129,18 @@ namespace pointpillars
       std::cout << "Loaded weights OpenPCDet" << std::endl;
       for (auto const &w : weights)
       {
-        std::cout << w.key().toStringRef() << w.value().toTensor().sizes() << '\n';
+        std::cout << w.key().toStringRef() << " shape: " << w.value().toTensor().sizes() << '\n';
       }
+      std::cout << "##############################!\n";
 
       const torch::OrderedDict<std::string, at::Tensor> &model_params = this->named_parameters();
 
       std::cout << "Our model weights" << std::endl;
       for (auto const &w : model_params)
       {
-        std::cout << w.key() << w.value().sizes() << '\n';
+        std::cout << w.key() << " shape: " << w.value().sizes() << '\n';
       }
+      std::cout << "##############################!\n";
 
       std::vector<std::string> param_names;
       for (auto const &w : model_params)
@@ -150,12 +158,19 @@ namespace pointpillars
 
         if (std::find(param_names.begin(), param_names.end(), name) != param_names.end())
         {
-          std::cout << name << " exists: " << param.sizes() << model_params.find(name)->sizes() << std::endl;
+          // std::cout << name << " exists: " << param.sizes() << model_params.find(name)->sizes() << std::endl;
+          if (param.sizes() != model_params.find(name)->sizes()){
+            std::cout << name << " exists but difference sizes theirs vs ours: " << param.sizes() << model_params.find(name)->sizes() << std::endl;
+          }
           model_params.find(name)->copy_(param);
         }
         else
         {
-          std::cout << name << " does not exist among model parameters." << std::endl;
+          // don't print running_mean and running_var and num_batches_tracked
+          if (name.find("running_mean") == std::string::npos && name.find("running_var") == std::string::npos && name.find("num_batches_tracked") == std::string::npos){
+              std::cout << name << " does not exist among model parameters." << std::endl;
+          } else{
+          }
         };
       }
     }

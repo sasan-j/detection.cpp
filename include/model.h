@@ -12,6 +12,7 @@ struct ModelConfig
   std::vector<float> point_cloud_range;
   int max_points_voxel;
   int max_num_voxels;
+  int num_point_features;
 
   // Backbone 2d Config
   std::vector<int32_t> backbone_layer_nums;

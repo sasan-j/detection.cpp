@@ -122,6 +122,7 @@ AnchorHeadConfig pp_multi_head = {
 //     {-39.68, -39.68,  -3.  ,  39.68,  39.68,   1.}, // point_cloud_range
 //     32, // max_points_voxel
 //     40000, // max_num_voxels
+//     4, // num_point_features
 //     {3, 5, 5}, // backbone_layer_nums
 //     {2, 2, 2}, // backbone_layer_strides
 //     {64, 128, 256}, // backbone_num_filters
@@ -136,6 +137,7 @@ ModelConfig model_config = {
     {-51.2, -51.2, -5.0, 51.2, 51.2, 3.0}, // point_cloud_range
     20, // max_points_voxel
     40000, // max_num_voxels
+    5, // num_point_features
     {3, 5, 5}, // backbone_layer_nums
     {2, 2, 2}, // backbone_layer_strides
     {64, 128, 256}, // backbone_num_filters

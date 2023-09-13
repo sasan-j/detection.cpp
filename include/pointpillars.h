@@ -34,7 +34,7 @@ namespace pointpillars
       // CLASS_AGNOSTIC: False
 
       // PillarVFE
-      vfe = PillarVFE(num_filters, true, false, true, config.voxel_size, config.point_cloud_range, 4);
+      vfe = PillarVFE(num_filters, true, false, true, config.voxel_size, config.point_cloud_range, config.num_point_features);
       pp_scatter = PointPillarScatter(64, grid_size.index({0}).item<int64_t>(), grid_size.index({1}).item<int64_t>(), grid_size.index({2}).item<int64_t>());
       register_module("vfe", vfe);
       register_module("map_to_bev", pp_scatter);

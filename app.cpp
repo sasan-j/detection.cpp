@@ -7,9 +7,12 @@
 #include "pointpillars.h"
 #include "utils.h"
 
-torch::Tensor add_padding(torch::Tensor tensor, int padding_value) {
+torch::Tensor add_padding(torch::Tensor tensor, int padding_value, bool right=false) {
     auto options = torch::TensorOptions().dtype(tensor.dtype()).device(tensor.device());
     auto padding_tensor = torch::full({tensor.size(0), 1}, padding_value, options);
+    if (right) {
+        return torch::cat({tensor, padding_tensor}, /*dim=*/1);
+    }
     return torch::cat({padding_tensor, tensor}, /*dim=*/1);
 }
 
@@ -159,6 +162,12 @@ ModelConfig model_config = {
   auto pcd = torch::from_file(file_path, false, 65536 * 4, torch::kFloat32);
   pcd = pcd.view({-1, 4});
 
+  if (model_config.num_point_features == 5) {
+    // add a column of ones to the point cloud
+    pcd = add_padding(pcd, 1, true);
+  }
+
+
   std::cout << "points" << pcd.sizes() << '\n';
 
   pcd.select(1, 2) -= 1.75;
@@ -203,13 +212,6 @@ ModelConfig model_config = {
   std::cout << "points_per_voxels" << num_points_per_voxel.index({torch::indexing::Slice(0, 3)}) << '\n';
   std::cout << "points_per_voxels shape:" << num_points_per_voxel.sizes() << '\n';
 
-  // Verifications to see if we're getting the right shapes
-  assert(pcd.sizes() == torch::IntArrayRef({65536, 4}));
-  // assert(torch::equal(grid_size, torch::tensor({496, 496, 1}, torch::TensorOptions().dtype(torch::kLong).device(torch::kCPU))));
-  assert(grid_size.sizes() == torch::IntArrayRef({3}));
-  // assert(voxels.sizes() == torch::IntArrayRef({6941, max_points_voxel, pcd.size(1)}));
-  // assert(coors.sizes() == torch::IntArrayRef({6941, 3}));
-  // assert(num_points_per_voxel.sizes() == torch::IntArrayRef({6941}));
 
   // Create a vector of inputs.
   BatchMap batch_dict;
@@ -233,20 +235,20 @@ ModelConfig model_config = {
   std::cout << "Model was instantiated" << '\n';
 
   // Execute the model and turn its output into a tensor.
-  // auto pred_dicts = model.forward(batch_dict);
+  auto pred_dicts = model.forward(batch_dict);
 
-  // std::cout << "pred_dict" << '\n';
+  std::cout << "pred_dict" << '\n';
 
-  // auto batch_preds = pred_dicts[0];
+  auto batch_preds = pred_dicts[0];
 
   // for (const auto& kv : batch_preds) {
   //   std::cout << kv.first << kv.second << '\n';
   // }
 
 
-  // std::cout << "output" << '\n';
+  std::cout << "output" << '\n';
 
-  // save_map("output.pt", batch_preds);
+  save_map("output.pt", batch_preds);
 
 
   // torch::jit::script::Module voxelizer;

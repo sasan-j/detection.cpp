@@ -296,6 +296,7 @@ namespace pointpillars
 
         //////////////////////////////////////////////////
         std::vector<torch::Tensor> multihead_label_mapping;
+        torch::Tensor final_scores, final_labels, final_boxes;
 
         if (nms_config.MULTI_CLASSES_NMS) {
           if (cls_preds_list.size() == 0) { // If cls_preds is not a list
@@ -334,9 +335,9 @@ namespace pointpillars
               cur_start_idx += cur_cls_preds.size(0);
           }
 
-          torch::Tensor final_scores = torch::cat(pred_scores, 0);
-          torch::Tensor final_labels = torch::cat(pred_labels, 0);
-          torch::Tensor final_boxes = torch::cat(pred_boxes, 0);
+          final_scores = torch::cat(pred_scores, 0);
+          final_labels = torch::cat(pred_labels, 0);
+          final_boxes = torch::cat(pred_boxes, 0);
         } else {
           // Single Head Kinda thing
           std::tie(cls_preds, label_preds) = torch::max(cls_preds, -1);
@@ -364,17 +365,18 @@ namespace pointpillars
             selected_scores = max_cls_preds.index({selected});
           }
 
-          torch::Tensor final_scores = selected_scores;
-          torch::Tensor final_labels = label_preds.index({selected});
-          torch::Tensor final_boxes = box_preds.index({selected});
+          final_scores = selected_scores;
+          final_labels = label_preds.index({selected});
+          final_boxes = box_preds.index({selected});
+        }
 
-          std::unordered_map<std::string, torch::Tensor> record_dict = {
+
+        std::unordered_map<std::string, torch::Tensor> record_dict = {
               {"points", points},
               {"pred_boxes", final_boxes},
               {"pred_scores", final_scores},
               {"pred_labels", final_labels}};
-          pred_dicts.push_back(record_dict);
-        }
+        pred_dicts.push_back(record_dict);
       }
       return pred_dicts;
     }
